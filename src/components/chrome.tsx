@@ -118,7 +118,7 @@ export function Nav() {
                     onClick={() => setMenuOpen((v) => !v)}
                     className="flex items-center gap-2 rounded-full border border-line py-1 pl-1 pr-2.5 transition-colors hover:border-ink/30 cursor-pointer"
                   >
-                    <Avatar name={user.name} size={28} />
+                    <Avatar name={user.name} size={28} src={user.picture} />
                     <ChevronDown size={14} className={`text-sub transition-transform ${menuOpen ? "rotate-180" : ""}`} />
                   </button>
                   {menuOpen && (

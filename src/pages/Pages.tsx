@@ -158,7 +158,7 @@ export function SupportPage() {
   const { user, toast } = useStore();
   const [form, setForm] = useState({ name: user?.name || "", email: user?.email || "", subject: "Campaign question", message: "", campaignId: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState(false);
+  const [busy] = useState(false);
   const [ticket, setTicket] = useState<string | null>(null);
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
@@ -172,13 +172,15 @@ export function SupportPage() {
     if (form.message.trim().length < 10) errs.message = "Please describe how we can help (min. 10 characters).";
     setErrors(errs);
     if (Object.keys(errs).length) return;
-    setBusy(true);
-    window.setTimeout(() => {
-      setBusy(false);
-      setTicket("SUP-" + Math.floor(10000 + Math.random() * 90000));
-      toast("Support request sent", "Our team will reply within a few working hours.");
-    }, 700);
+    const subject = encodeURIComponent(`Beyond Reach support — ${form.subject}${form.campaignId ? ` (${form.campaignId})` : ""}`);
+    const body = encodeURIComponent(
+      `Name: ${form.name}\nEmail: ${form.email}\nCampaign ID: ${form.campaignId || "—"}\n\n${form.message}`
+    );
+    window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`;
+    setTicket("EMAIL");
+    toast("Email draft created", "Send it from your email app — nothing is transmitted from this page.");
   };
+
 
   return (
     <div className="anim-fade">
@@ -251,10 +253,11 @@ export function SupportPage() {
                   <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
                     <CheckCircle2 size={26} />
                   </div>
-                  <h3 className="mt-6 text-xl font-semibold tracking-tight">Message received</h3>
+                  <h3 className="mt-6 text-xl font-semibold tracking-tight">Your email draft is ready</h3>
                   <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-sub">
-                    Your reference ID is <span className="font-mono font-semibold text-ink">{ticket}</span>. We'll reply to{" "}
-                    {form.email} within a few working hours.
+                    Your email app should have opened with your message pre-filled for{" "}
+                    <span className="font-medium text-ink">{form.email}</span>. Nothing has been sent yet — press send there to
+                    reach our team.
                   </p>
                   <button
                     onClick={() => {

@@ -1,8 +1,9 @@
+import { useState } from "react";
 import { ArrowRight, Bell, Check, Eye, Info } from "lucide-react";
 import { navigate } from "../lib/router";
 import { useStore } from "../lib/store";
-import { DISCLAIMER, PACKAGE, fmtINR } from "../lib/data";
-import { Accordion, Reveal, SectionHead, btnCls } from "../components/ui";
+import { DISCLAIMER, PACKAGE, SUPPORT_EMAIL, fmtINR } from "../lib/data";
+import { Accordion, Input, Reveal, SectionHead, btnCls } from "../components/ui";
 
 export const FAQS = [
   {
@@ -19,11 +20,15 @@ export const FAQS = [
   },
   {
     q: "How long does it take for my campaign to go live?",
-    a: "Most campaigns are reviewed within 24–48 hours. Once approved, your campaign is scheduled and launched, and you can follow every status change from your dashboard and notifications.",
+    a: "After your payment is verified, most campaigns are reviewed within 24–48 hours. Once approved, your campaign is scheduled and launched, and you can follow every status change from your dashboard and notifications.",
+  },
+  {
+    q: "How is my payment processed?",
+    a: "Payments are processed through Razorpay, a PCI-DSS compliant payment gateway, supporting UPI, cards, netbanking and wallets. Your payment is verified on our server (signature + gateway status) before your campaign is marked paid — a frontend success message alone is never treated as proof of payment.",
   },
   {
     q: "How do I track my campaign's performance?",
-    a: "Every customer gets a personal dashboard with total views, reach and platform-wise statistics for Instagram, Facebook, YouTube and Google. You can view daily performance, compare platforms and download branded PDF reports anytime.",
+    a: "Every customer gets a personal dashboard with total views, reach and platform-wise statistics for Instagram, Facebook, YouTube and Google, sourced from the advertising platforms' own reporting. You can view daily performance, compare platforms and download branded PDF reports anytime.",
   },
   {
     q: "Do I need my own advertising accounts?",
@@ -118,12 +123,51 @@ export function PricingSection({ hideHead = false }: { hideHead?: boolean }) {
   );
 }
 
-export default function PricingPage() {
+/* --------------------------- waitlist card --------------------------- */
+
+function WaitlistCard({ name, price, note }: { name: string; price: string; note: string }) {
   const { toast } = useStore();
+  const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState("");
+  const [error, setError] = useState("");
 
-  const notify = (name: string) =>
-    toast("You're on the list", `We'll email you as soon as ${name} becomes available.`);
+  const submit = () => {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return setError("Please enter a valid email address.");
+    setError("");
+    const subject = encodeURIComponent(`Waitlist — ${name}`);
+    const body = encodeURIComponent(`Please add me to the ${name} waitlist.\n\nEmail: ${email}\n\nThank you.`);
+    window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`;
+    toast("Email draft created", "Send it from your email app to join the waitlist — this site stores no addresses.");
+    setOpen(false);
+    setEmail("");
+  };
 
+  return (
+    <div className="flex h-full flex-col rounded-3xl border border-dashed border-ink/20 bg-white p-8">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-sub">{name}</span>
+        <span className="rounded-full bg-mist px-3 py-1 text-[11px] font-medium text-sub">In Development</span>
+      </div>
+      <p className="mt-6 text-4xl font-semibold tracking-tight">{price}</p>
+      <p className="mt-3 flex-1 text-sm leading-relaxed text-sub">{note}</p>
+      {open ? (
+        <div className="mt-7 flex flex-col gap-2 anim-fade">
+          <Input type="email" placeholder="you@business.com" value={email} onChange={(e) => setEmail(e.target.value)} error={!!error} />
+          {error && <p className="text-xs text-red-600 anim-fade">{error}</p>}
+          <button onClick={submit} className={btnCls("primary", "md", "w-full")}>
+            Notify Me
+          </button>
+        </div>
+      ) : (
+        <button onClick={() => setOpen(true)} className={btnCls("secondary", "md", "mt-7 w-full")}>
+          <Bell size={15} /> Notify Me
+        </button>
+      )}
+    </div>
+  );
+}
+
+export default function PricingPage() {
   return (
     <div className="anim-fade">
       <section className="pb-4 pt-36 md:pt-44">
@@ -196,24 +240,12 @@ export default function PricingPage() {
             sub="Our pricing architecture is built to grow with you. These packages are in development — join the waitlist to be first in line."
           />
           <div className="mx-auto mt-14 grid max-w-4xl gap-5 md:grid-cols-2">
-            {[
-              { name: "Growth Reach", price: "₹999", note: "Estimated 20,000–30,000 views · priority launch · advanced targeting" },
-              { name: "Scale Reach", price: "Custom", note: "Dedicated strategist · multi-campaign planning · monthly reporting calls" },
-            ].map((p, i) => (
-              <Reveal key={p.name} delay={i * 100}>
-                <div className="flex h-full flex-col rounded-3xl border border-dashed border-ink/20 bg-white p-8">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-sub">{p.name}</span>
-                    <span className="rounded-full bg-mist px-3 py-1 text-[11px] font-medium text-sub">In Development</span>
-                  </div>
-                  <p className="mt-6 text-4xl font-semibold tracking-tight">{p.price}</p>
-                  <p className="mt-3 flex-1 text-sm leading-relaxed text-sub">{p.note}</p>
-                  <button onClick={() => notify(p.name)} className={btnCls("secondary", "md", "mt-7 w-full")}>
-                    <Bell size={15} /> Notify Me
-                  </button>
-                </div>
-              </Reveal>
-            ))}
+            <Reveal delay={100} className="h-full">
+              <WaitlistCard name="Growth Reach" price="₹999" note="Estimated 20,000–30,000 views · priority launch · advanced targeting" />
+            </Reveal>
+            <Reveal delay={200} className="h-full">
+              <WaitlistCard name="Scale Reach" price="Custom" note="Dedicated strategist · multi-campaign planning · monthly reporting calls" />
+            </Reveal>
           </div>
         </div>
       </section>

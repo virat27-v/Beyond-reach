@@ -6,9 +6,8 @@ import { Logo, Spinner, btnCls } from "./components/ui";
 import Home from "./pages/Home";
 import PricingPage from "./pages/Pricing";
 import BookingPage from "./pages/Booking";
-import { ForgotPage, LoginPage, RegisterPage } from "./pages/Auth";
+import { ForgotPage, LoginPage, RegisterPage, ResetPage } from "./pages/Auth";
 import DashboardPage from "./pages/Dashboard";
-import CampaignDetailPage from "./pages/CampaignDetail";
 import { AboutPage, PrivacyPage, RefundPage, SupportPage, TermsPage } from "./pages/Pages";
 
 const TITLES: Record<string, string> = {
@@ -41,10 +40,12 @@ function LoadingScreen() {
 }
 
 function RequireAuth({ children, next }: { children: React.ReactNode; next: string }) {
-  const { user } = useStore();
+  const { user, authLoading } = useStore();
   useEffect(() => {
-    if (!user) navigate(`/login?next=${encodeURIComponent(next)}`);
-  }, [user, next]);
+    if (!authLoading && !user) navigate(`/login?next=${encodeURIComponent(next)}`);
+  }, [user, authLoading, next]);
+  // Never render customer content until Firebase has resolved the session.
+  if (authLoading) return <LoadingScreen />;
   if (!user) return <LoadingScreen />;
   return <>{children}</>;
 }
@@ -73,7 +74,7 @@ function NotFound() {
 
 function Router() {
   const hash = useHashRoute();
-  const { path, segments } = parseRoute(hash);
+  const { path } = parseRoute(hash);
   const { user } = useStore();
 
   useEffect(() => {
@@ -91,8 +92,13 @@ function Router() {
   }, [hash]);
 
   useEffect(() => {
-    if (user && (path === "/login" || path === "/register")) navigate("/dashboard");
-  }, [user, path]);
+    if (user && (path === "/login" || path === "/register")) {
+      const { query } = parseRoute(hash);
+      const requested = query.get("next") || "/dashboard";
+      const safe = requested.startsWith("/") && !requested.startsWith("//") ? requested : "/dashboard";
+      navigate(safe);
+    }
+  }, [user, path, hash]);
 
   switch (path) {
     case "/":
@@ -145,6 +151,8 @@ function Router() {
       return user ? <LoadingScreen /> : <RegisterPage />;
     case "/forgot":
       return <ForgotPage />;
+    case "/reset":
+      return <ResetPage />;
     case "/dashboard":
       return (
         <RequireAuth next="/dashboard">
@@ -180,6 +188,13 @@ function Router() {
           <Toasts />
         </RequireAuth>
       );
+    case "/dashboard/support":
+      return (
+        <RequireAuth next="/dashboard/support">
+          <DashboardPage view="support" />
+          <Toasts />
+        </RequireAuth>
+      );
     case "/dashboard/account":
       return (
         <RequireAuth next="/dashboard/account">
@@ -188,14 +203,6 @@ function Router() {
         </RequireAuth>
       );
     default:
-      if (segments[0] === "dashboard" && segments[1] === "campaigns" && segments[2]) {
-        return (
-          <RequireAuth next={`/dashboard/campaigns/${segments[2]}`}>
-            <CampaignDetailPage id={segments[2]} />
-            <Toasts />
-          </RequireAuth>
-        );
-      }
       return <NotFound />;
   }
 }

@@ -248,16 +248,6 @@ export function StatusPill({ status, className = "" }: { status: CampaignStatus;
   );
 }
 
-export function DemoBadge({ className = "" }: { className?: string }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded-md border border-dashed border-ink/25 bg-white px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.14em] text-sub ${className}`}
-    >
-      DEMO
-    </span>
-  );
-}
-
 /* --------------------------- Platform icon -------------------------- */
 
 export function PlatformGlyph({ id, size = 18 }: { id: PlatformId; size?: number }) {
@@ -558,7 +548,20 @@ export function initials(name: string): string {
     .toUpperCase();
 }
 
-export function Avatar({ name, size = 36 }: { name: string; size?: number }) {
+export function Avatar({ name, size = 36, src }: { name: string; size?: number; src?: string }) {
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt={name}
+        referrerPolicy="no-referrer"
+        width={size}
+        height={size}
+        className="shrink-0 rounded-full border border-line object-cover"
+        style={{ width: size, height: size }}
+      />
+    );
+  }
   return (
     <span
       className="inline-flex shrink-0 items-center justify-center rounded-full bg-ink font-semibold text-white"
