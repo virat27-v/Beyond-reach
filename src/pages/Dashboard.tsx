@@ -276,12 +276,16 @@ function Overview() {
         }
       />
 
-      {user.isFirstLogin && (
+      {campaigns.length === 0 && (
         <div className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-ink px-6 py-5 text-white anim-rise">
           <div>
-            <p className="text-sm font-semibold">Your account was just created with Google.</p>
+            <p className="text-sm font-semibold">
+              {user.isFirstLogin ? "Welcome — your account was just created with Google." : "No campaigns yet."}
+            </p>
             <p className="mt-1 text-[13px] text-white/60">
-              Registration happened automatically — no separate sign-up needed. Let's launch your first campaign.
+              {user.isFirstLogin
+                ? "Registration happened automatically — no separate sign-up needed. Launch your first campaign from here."
+                : "Start your first campaign in about ten minutes — the Starter Reach package is ₹399."}
             </p>
           </div>
           <button onClick={() => navigate("/book")} className={btnCls("white", "sm")}>
