@@ -266,7 +266,7 @@ export default function BookingPage() {
           <div className="mx-auto mt-9 flex max-w-[340px] justify-center">
             <GoogleSignInButton />
           </div>
-          <button onClick={() => navigate("/login?next=/book")} className="mt-4 text-sm text-sub underline underline-offset-2 transition-colors hover:text-ink cursor-pointer">
+          <button onClick={() => navigate("/login")} className="mt-4 text-sm text-sub underline underline-offset-2 transition-colors hover:text-ink cursor-pointer">
             Continue to the login page
           </button>
           <p className="mt-6 text-xs text-faint">Free · verified directly with Google · no password shared with us</p>

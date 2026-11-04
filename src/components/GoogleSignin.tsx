@@ -35,28 +35,25 @@ export function GoogleSignInButton() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const { query } = parseRoute(hash);
-
   const click = async () => {
     if (busy) return;
     setBusy(true);
     setError("");
-    // Where to land after a successful sign-in:
-    // - from the booking page → back to booking
-    // - from the login page   → the /login?next=… param
-    // - anywhere else         → dashboard
-    const next = path === "/book" ? "/book" : query.get("next") || "/dashboard";
     try {
-      const res = await googleLogin(next);
+      // After any successful sign-in the user always lands on the dashboard
+      // first — the booking form is reached from the dashboard, never as the
+      // direct post-login screen.
+      const res = await googleLogin("/dashboard");
       if (!res.ok) {
         setError(res.error);
         return;
       }
       // Popup success: onAuthStateChanged has already set the authenticated
-      // user (and created the account record on first sign-in). Route the
-      // user to where they wanted to go. `hash`/`path`/`query` are captured
-      // from the render — no hooks are called inside this event handler.
-      if (path === "/login") navigate(query.get("next") || "/dashboard");
+      // user (and created the account record on first sign-in). If we are on
+      // a page that disappears after sign-in (login or the booking gate),
+      // move to the dashboard. `hash`/`path` are captured from the render —
+      // no hooks are called inside this event handler.
+      if (path === "/login" || path === "/book") navigate("/dashboard");
     } finally {
       setBusy(false);
     }
