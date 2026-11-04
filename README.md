@@ -1,124 +1,94 @@
-# Beyond Reach — Firebase Google Sign-In
+# Beyond Reach — frontend-only advertising website
 
-A premium, minimalist advertising website with **real Google Sign-In via Firebase
-Authentication**. Frontend only: no Supabase, no custom backend, no database.
+Premium, minimal, **100% frontend-only** site (Vite single-file build, deployed on Vercel).
+No backend, no database. The only integration is **real Google Sign-In via Firebase
+Authentication** (`GoogleAuthProvider`, `signInWithPopup` / `signInWithRedirect`).
 
-- React 19 + Vite 7 + Tailwind CSS 4 (static build, deploys to Vercel)
-- `signInWithPopup` on desktop, `signInWithRedirect` on mobile / when popups are blocked
-- `onAuthStateChanged` keeps the session in sync and restores it after refresh
-- Protected customer dashboard (Firebase auth state is the gate)
-- Displays the Google name, email and profile photo
-- Real `signOut`
-- Honest empty states — no fabricated campaigns, payments or analytics
+## Environment variables (the only setup)
 
-## 1. Create the Firebase project (one time)
-
-1. Open <https://console.firebase.google.com/> → **Add project** (or use an existing one).
-2. **Build → Authentication → Get started**.
-3. **Sign-in method → Google → Enable**. Choose a project support email → **Save**.
-4. **Project settings (gear) → General → Your apps → Web (`</>`)**. Register the app
-   (nickname e.g. `Beyond Reach Web`). Copy the `firebaseConfig` values from the
-   SDK setup snippet — they map 1:1 to the variables below.
-5. **Authentication → Settings → Authorized domains** — add your production domain
-   **without** protocol or path, for example:
-
-   ```
-   beyond-reach.vercel.app
-   your-custom-domain.com
-   localhost
-   ```
-
-   `localhost` is present by default. Google sign-in fails with
-   `auth/unauthorized-domain` if the domain is missing.
-
-> Google Cloud OAuth consent screen: Firebase usually configures this for you when
-> you enable Google. If Google prompts about the consent screen, open
-> **Google Cloud Console → APIs & Services → OAuth consent screen**, set the app
-> name/support email and add the `openid`, `email`, `profile` scopes. Web Client ID
-> and secret are managed by Firebase — do not paste them into the frontend.
-
-## 2. Vercel environment variables (exact names)
-
-Add all six in **Vercel → Project → Settings → Environment Variables** (Production,
-Preview and Development), then redeploy:
-
-| Variable | Value from Firebase |
+| Variable | From |
 |---|---|
-| `VITE_FIREBASE_API_KEY` | `apiKey` |
-| `VITE_FIREBASE_AUTH_DOMAIN` | `authDomain` (e.g. `your-project.firebaseapp.com`) |
-| `VITE_FIREBASE_PROJECT_ID` | `projectId` |
-| `VITE_FIREBASE_STORAGE_BUCKET` | `storageBucket` (e.g. `your-project.appspot.com`) |
-| `VITE_FIREBASE_MESSAGING_SENDER_ID` | `messagingSenderId` |
-| `VITE_FIREBASE_APP_ID` | `appId` (e.g. `1:1234567890:web:abcdef`) |
+| `VITE_FIREBASE_API_KEY` | Firebase web-app config |
+| `VITE_FIREBASE_AUTH_DOMAIN` | Firebase web-app config |
+| `VITE_FIREBASE_PROJECT_ID` | Firebase web-app config |
+| `VITE_FIREBASE_STORAGE_BUCKET` | Firebase web-app config |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | Firebase web-app config |
+| `VITE_FIREBASE_APP_ID` | Firebase web-app config |
 
-These are **public Firebase web identifiers**, not secrets. No service account,
-private key or client secret is used. Vite inlines `VITE_*` variables **at build
-time**, so you must **redeploy after adding or changing them**.
+All six come from **Firebase Console → Project settings → General → Your apps → SDK
+configuration and API keys**. No values are hardcoded in the source.
 
-Local development: copy `.env.example` to `.env`, fill the six values, then run:
+## Firebase console steps (one time)
+
+1. **Create a Firebase project** (console.firebase.google.com).
+2. **Project settings → General → Your apps → Add app → Web (</>)** → register the app
+   (any nickname). Copy the six `VITE_FIREBASE_*` values from the shown config.
+3. **Authentication → Get started → Sign-in method → Google → Enable**
+   → add your support email → save.
+4. **Make sure your Vercel domain is authorized** —
+   **Project settings → General → Authorized domains**: your production domain
+   (e.g. `beyondreach.vercel.app`) must be listed (Firebase pre-fills the domain used
+   as `authDomain`). If you use a custom domain or preview deployments, add those too.
+   If sign-in ever fails with "This domain is not authorized", this is the place.
+5. No service account, no database, no API keys beyond the public web config —
+   nothing secret is required for Authentication.
+
+## Vercel deployment steps
+
+1. Vercel → your project → **Settings → Environment Variables**.
+2. Add **all six** variables (available for *Production, Preview and Development*).
+3. **Redeploy** (Vercel bakes `VITE_*` values in at build time — a redeploy is
+   required after changing them).
+4. Test on the production domain: sign-in popup on desktop, redirect flow on mobile.
+
+## Run locally
 
 ```bash
+# .env with the six VITE_FIREBASE_* values
 npm install
-npm run dev        # http://localhost:5173
-npm run build      # static production build → dist/
-npm run preview
+npm run dev      # http://localhost:5173 (must be in Authorized domains too)
+npm run build    # → dist/index.html (single file)
 ```
 
-## 3. Vercel deployment steps
+## How the sign-in flow works
 
-1. Push this project to Git (or deploy from Arena AI to Vercel).
-2. In Vercel, **Framework preset: Vite**, build command `npm run build`,
-   output directory `dist` (already set in `vercel.json`).
-3. Add the six `VITE_FIREBASE_*` variables for Production **and** Preview.
-4. Deploy, then open the production URL. Sign in with Google.
-5. Add that exact production domain to **Firebase → Authentication → Authorized domains**.
-6. Confirm the Google provider is **Enabled** in Firebase Authentication.
-7. Test: sign in, refresh (session persists), sign out, cancel the popup
-   (friendly error, no login), and open `/dashboard` while signed out
-   (redirects to `/login?next=/dashboard`).
+- **Desktop** — `signInWithPopup(GoogleAuthProvider)` opens Google's native
+  account-chooser popup.
+- **Mobile** — `signInWithRedirect` performs the full-page redirect flow and returns
+  to the page you were on (`/dashboard` or `/book`).
+- **`onAuthStateChanged`** drives the whole app: session is restored automatically
+  after refresh (Firebase persists it in IndexedDB via explicit
+  `browserLocalPersistence`) and the dashboard route is protected —
+  unauthenticated users are sent to `/login`.
+- **`signOut`** clears the session (nav menu, mobile menu and Account page).
+- **Name, email and profile photo** come from the verified Google user object and are
+  shown across the site.
+- **Errors & cancellation** are handled: cancelled popup, blocked popup,
+  unauthorized-domain, Google provider not enabled, network failure — each with a
+  specific, honest message. Nothing is simulated.
 
-## Troubleshooting (firebase project `beyond-reach-c3fae`)
+## User accounts (automatic, no separate registration)
 
-| Firebase error | Meaning | Fix |
-|---|---|---|
-| `auth/invalid-api-key` | Google rejected the API key | Copy `apiKey` again from **Project settings → General → Your apps → Web app**; update `VITE_FIREBASE_API_KEY`; redeploy. Also check **Google Cloud Console → APIs & Services → Credentials → API key restrictions** (allow Identity Toolkit, or set Application restrictions to *None* / your domains). |
-| `auth/unauthorized-domain` | Current host missing in Firebase | **Authentication → Settings → Authorized domains** → add the domain shown in the error (no `https://`, no path). |
-| `auth/operation-not-allowed` | Google provider disabled | **Authentication → Sign-in method → Google → Enable**. |
-| `auth/configuration-not-found` | Authentication not initialised | Open **Authentication → Get started** in the Firebase console. |
-| Popup does nothing on mobile | Popups blocked | The app automatically falls back to `signInWithRedirect`. |
+- The user account **is the Firebase Authentication record**, created automatically
+  when a Google user signs in for the first time. No separate register step exists
+  or is needed.
+- **First sign-in** → account record is created (unique `uid`, registration
+  timestamp), the user is logged in, and the dashboard shows a one-time
+  "account created" welcome with a CTA.
+- **Every later sign-in** (same or different device) resolves to the **same `uid`** —
+  the same account, no duplicates possible.
+- The **Account** page shows the full record: name, email, photo, User ID,
+  registered-on date, last login, and status (Active).
+- Honest scope: this is a frontend-only build, so the account record lives in
+  Firebase Authentication (managed by Google/Firebase) — the site itself stores no
+  user data on any server.
 
-## How authentication works
+## What this version does (and doesn't)
 
-```
-src/lib/firebase.ts   initializeApp + getAuth (config from VITE_FIREBASE_*)
-                      signInWithPopup (desktop) / signInWithRedirect (mobile)
-                      getRedirectResult, onAuthStateChanged, signOut, error mapping
-src/lib/store.tsx     AuthProvider: authLoading, user, signInWithGoogle, logout, toasts
-src/components/googleSignIn.tsx  Premium "Continue with Google" button + errors
-src/App.tsx           RequireAuth gate for every /dashboard route
-```
-
-- The dashboard never renders until `authLoading` is false and Firebase reports a user.
-- The signed-in name, email and profile photo come from the Firebase `User`
-  (`displayName`, `email`, `photoURL`).
-- Session persistence uses Firebase's `browserLocalPersistence`, so a refresh keeps
-  the user signed in. Sign-out clears it.
-- Google account cancellation/closure yields a friendly message — never a fake login.
-- If the environment variables are missing, no fake session is created: clicking the
-  button explains that Firebase configuration is required.
-
-## Honest limits of a frontend-only build
-
-Firebase Authentication authenticates the user; it is **not** authorization for
-private data. There is no database in this project, so the dashboard shows the
-verified profile plus clean empty states (“No campaigns yet”, “No orders or
-payments”, “Analytics not available yet”). A campaign brief creates your own email
-draft — it does not place an order or take payment. If you later store private
-campaign data or accept payments, add server-side Firebase ID-token verification
-(Admin SDK) and a proper database; never trust the client alone.
-
-## Removed from earlier versions
-
-Supabase, custom backend/API, SQLite, Razorpay/payment UI, the GIS
-`VITE_GOOGLE_CLIENT_ID` flow and its “not configured” screen have been removed.
-Firebase Authentication is now the only sign-in mechanism.
+- ✅ Homepage (with dashboard preview), pricing, about, legal, support (WhatsApp/email).
+- ✅ Google sign-in → personalized dashboard with honest empty states
+  ("No campaigns yet", "Analytics Not Available Yet").
+- ✅ 4-step booking form → send the request on **WhatsApp / Email / Copy** (pre-filled).
+  No online payment is taken or simulated.
+- ❌ No campaigns are run, no payments taken, no data stored on any server —
+  and the site never claims otherwise.
