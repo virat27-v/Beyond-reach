@@ -1,6 +1,10 @@
+# Dependencies — NEVER upload this folder (288 MB). Vercel runs `npm install` itself.
 node_modules/
+
+# Build output — Vercel builds it automatically
 dist/
-.env
-.env.local
-*.local
+
+# Misc
 .DS_Store
+*.log
+.vite/

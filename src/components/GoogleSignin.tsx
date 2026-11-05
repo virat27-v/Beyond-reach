@@ -29,16 +29,18 @@ function Spinner({ size = 17 }: { size?: number }) {
  * Cancellation and errors are handled and shown inline.
  */
 export function GoogleSignInButton() {
-  const { googleLogin, firebaseConfigured } = useStore();
+  const { googleLogin, firebaseConfigured, authReady } = useStore();
   const hash = useHashRoute();
   const { path } = parseRoute(hash);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [errorCode, setErrorCode] = useState("");
 
   const click = async () => {
     if (busy) return;
     setBusy(true);
     setError("");
+    setErrorCode("");
     try {
       // After any successful sign-in the user always lands on the dashboard
       // first — the booking form is reached from the dashboard, never as the
@@ -46,6 +48,7 @@ export function GoogleSignInButton() {
       const res = await googleLogin("/dashboard");
       if (!res.ok) {
         setError(res.error);
+        setErrorCode(res.code ?? "");
         return;
       }
       // Popup success: onAuthStateChanged has already set the authenticated
@@ -66,14 +69,25 @@ export function GoogleSignInButton() {
         {busy ? "Connecting to Google…" : "Continue with Google"}
       </button>
       {error && (
-        <p role="alert" className="w-full rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-[13px] leading-relaxed text-red-700 anim-fade text-left">
-          {error}
-        </p>
+        <div role="alert" className="w-full rounded-xl border border-red-100 bg-red-50 px-4 py-3 anim-fade text-left">
+          <p className="text-[13px] leading-relaxed text-red-700">{error}</p>
+          {errorCode && (
+            <p className="mt-1.5 font-mono text-[11px] text-red-500">
+              Error code: {errorCode} <span className="text-red-400">— send this line to support if it keeps happening.</span>
+            </p>
+          )}
+        </div>
       )}
       {!firebaseConfigured && (
         <p className="w-full rounded-xl bg-mist px-4 py-3 text-[12px] leading-relaxed text-sub text-left">
           Sign-in will activate as soon as the six VITE_FIREBASE_* environment variables are set on the deployment (see
           README). Nothing is stored by us — Google verifies you directly.
+        </p>
+      )}
+      {firebaseConfigured && !authReady && (
+        <p className="w-full rounded-xl bg-mist px-4 py-3 text-[12px] leading-relaxed text-sub text-left">
+          Sign-in couldn't be started in this browser. Please refresh the page — if it keeps happening, try a current
+          version of Chrome (details are logged in the browser console under [BR-AUTH]).
         </p>
       )}
     </div>

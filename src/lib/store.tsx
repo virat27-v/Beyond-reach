@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut } from "firebase/auth";
 import { User, UserData, emptyData, uid } from "./data";
-import { FIREBASE_CONFIGURED, auth, friendlyFirebaseError, googleProvider, isLikelyMobile } from "./firebase";
+import { AUTH_READY, FIREBASE_CONFIGURED, auth, authErrorCode, friendlyFirebaseError, googleProvider, isLikelyMobile } from "./firebase";
 
 /* ------------------------------------------------------------------ */
 /*  Frontend-only store backed by Firebase Authentication.             */
@@ -18,10 +18,11 @@ export interface Toast {
   tone?: "success" | "error" | "info";
 }
 
-type Result = { ok: true } | { ok: false; error: string };
+type Result = { ok: true } | { ok: false; error: string; code?: string };
 
 interface Store {
   firebaseConfigured: boolean;
+  authReady: boolean; // Firebase actually initialized in this browser
   ready: boolean; // Firebase auth state resolved
   user: User | null;
   data: UserData; // always empty in this build — nothing is stored on a server
@@ -116,37 +117,55 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const googleLogin = useCallback(
     async (next: string): Promise<Result> => {
-      if (!auth) {
+      const fbAuth = auth; // capture once so closures see a non-null value
+      if (!fbAuth) {
         return {
           ok: false,
           error:
             "Firebase is not configured for this deployment yet. Set the six VITE_FIREBASE_* environment variables (see README) and redeploy.",
         };
       }
-      const provider = googleProvider();
       const target = next || "/dashboard";
+      // Full-page redirect flow (mobile-first). Also used as the automatic
+      // desktop fallback when a popup is blocked or unsupported.
+      const doRedirect = async () => {
+        const url = `${window.location.origin}${window.location.pathname}#${target}`;
+        sessionStorage.setItem(PENDING_REDIRECT_KEY, "1");
+        await signInWithRedirect(fbAuth, googleProvider(), { url });
+      };
       try {
         if (isLikelyMobile()) {
-          // Mobile-friendly flow: full-page redirect to Google and back.
-          const url = `${window.location.origin}${window.location.pathname}#${target}`;
-          sessionStorage.setItem(PENDING_REDIRECT_KEY, "1");
-          await signInWithRedirect(auth, provider, { url });
+          // Mobile browsers: popups are blocked or unreliable → redirect flow.
+          await doRedirect();
           return { ok: true };
         }
         // Desktop: native Google account-chooser popup.
         // Firebase automatically creates the account record on first sign-in
         // and returns the same record on every later sign-in (no duplicates).
-        const cred = await signInWithPopup(auth, provider);
-        if (cred.user) {
-          const u = toAppUser(cred.user);
-          toast(
-            u.isFirstLogin ? "Account created" : "Welcome back",
-            u.isFirstLogin ? `Your Beyond Reach account was created with ${u.email}.` : `Signed in as ${u.name}.`
-          );
+        try {
+          const cred = await signInWithPopup(fbAuth, googleProvider());
+          if (cred.user) {
+            const u = toAppUser(cred.user);
+            toast(
+              u.isFirstLogin ? "Account created" : "Welcome back",
+              u.isFirstLogin ? `Your Beyond Reach account was created with ${u.email}.` : `Signed in as ${u.name}.`
+            );
+          }
+          return { ok: true };
+        } catch (popupErr) {
+          const code = (popupErr as { code?: string })?.code ?? "";
+          if (code === "auth/popup-blocked" || code === "auth/operation-not-supported-in-this-environment") {
+            // Some browsers/environments (kiosks, in-app browsers, strict
+            // settings) cannot host the popup — fall back to the redirect
+            // flow automatically instead of surfacing an error.
+            console.warn("[BR-AUTH] Popup unavailable in this environment — using redirect flow.", popupErr);
+            await doRedirect();
+            return { ok: true };
+          }
+          throw popupErr;
         }
-        return { ok: true };
       } catch (e) {
-        return { ok: false, error: friendlyFirebaseError(e) };
+        return { ok: false, error: friendlyFirebaseError(e), code: authErrorCode(e) };
       }
     },
     [toast]
@@ -160,6 +179,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const value: Store = {
     firebaseConfigured: FIREBASE_CONFIGURED,
+    authReady: AUTH_READY,
     ready,
     user,
     data: emptyData(),

@@ -50,6 +50,34 @@ npm run dev      # http://localhost:5173 (must be in Authorized domains too)
 npm run build    # → dist/index.html (single file)
 ```
 
+## Uploading to GitHub → deploying on Vercel
+
+Upload **only these files/folders** (the `.gitignore` already excludes the rest):
+
+```
+.env               ← Firebase web config (public by design — safe to commit)
+.env.example
+.gitignore
+README.md
+index.html
+package.json
+package-lock.json
+tsconfig.json
+vite.config.ts
+src/               (the whole src folder)
+```
+
+- ❌ **Never upload `node_modules/`** (288 MB — this is why direct uploads fail).
+  Vercel runs `npm install` on its own.
+- ❌ Never upload `dist/` — Vercel builds it.
+
+Then in Vercel: **New Project → Import the GitHub repo → Deploy**.
+Vercel picks up the `.env` from the repo automatically (or add the same six
+`VITE_FIREBASE_*` variables in Vercel → Settings → Environment Variables —
+dashboard values win over the repo file). After deploying, open the production
+domain and sign in — if it says the domain is not authorized, add the domain in
+Firebase Console → Project settings → Authorized domains.
+
 ## How the sign-in flow works
 
 - **Desktop** — `signInWithPopup(GoogleAuthProvider)` opens Google's native
