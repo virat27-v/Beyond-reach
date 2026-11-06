@@ -3,11 +3,13 @@ import { AppProvider, useStore } from "./lib/store";
 import { navigate, parseRoute, useHashRoute } from "./lib/router";
 import { PublicShell, Toasts } from "./components/chrome";
 import { Logo, Spinner, btnCls } from "./components/ui";
+import { consumePendingAuth, isDashboardRoute, POST_AUTH_DESTINATION } from "./lib/postAuth";
 import Home from "./pages/Home";
 import PricingPage from "./pages/Pricing";
 import BookingPage from "./pages/Booking";
-import { LoginPage } from "./pages/Auth";
-import DashboardPage, { DashView } from "./pages/Dashboard";
+import { ForgotPage, LoginPage, RegisterPage, ResetPage } from "./pages/Auth";
+import DashboardPage from "./pages/Dashboard";
+import CampaignDetailPage from "./pages/CampaignDetail";
 import { AboutPage, PrivacyPage, RefundPage, SupportPage, TermsPage } from "./pages/Pages";
 
 const TITLES: Record<string, string> = {
@@ -17,6 +19,8 @@ const TITLES: Record<string, string> = {
   "/support": "Support — Beyond Reach",
   "/book": "Book a Campaign — Beyond Reach",
   "/login": "Log in — Beyond Reach",
+  "/register": "Create Account — Beyond Reach",
+  "/forgot": "Reset Password — Beyond Reach",
   "/privacy": "Privacy Policy — Beyond Reach",
   "/terms": "Terms & Conditions — Beyond Reach",
   "/refund": "Refund Policy — Beyond Reach",
@@ -24,21 +28,8 @@ const TITLES: Record<string, string> = {
   "/dashboard/campaigns": "My Campaigns — Beyond Reach",
   "/dashboard/reports": "Reports — Beyond Reach",
   "/dashboard/notifications": "Notifications — Beyond Reach",
-  "/dashboard/orders": "Orders — Beyond Reach",
-  "/dashboard/payments": "Payments — Beyond Reach",
-  "/dashboard/support": "Support — Beyond Reach",
+  "/dashboard/orders": "My Orders — Beyond Reach",
   "/dashboard/account": "Account — Beyond Reach",
-};
-
-const DASH_VIEWS: Record<string, DashView> = {
-  "/dashboard": "overview",
-  "/dashboard/campaigns": "campaigns",
-  "/dashboard/reports": "reports",
-  "/dashboard/notifications": "notifications",
-  "/dashboard/orders": "orders",
-  "/dashboard/payments": "payments",
-  "/dashboard/support": "support",
-  "/dashboard/account": "account",
 };
 
 function LoadingScreen() {
@@ -51,11 +42,13 @@ function LoadingScreen() {
 }
 
 function RequireAuth({ children, next }: { children: React.ReactNode; next: string }) {
-  const { user, ready } = useStore();
+  const { user, authLoading } = useStore();
   useEffect(() => {
-    if (ready && !user) navigate(`/login?next=${encodeURIComponent(next)}`);
-  }, [user, ready, next]);
-  if (!ready || !user) return <LoadingScreen />;
+    if (!authLoading && !user) navigate(`/login?next=${encodeURIComponent(next)}`);
+  }, [user, authLoading, next]);
+  // Never render customer content until Firebase has resolved the session.
+  if (authLoading) return <LoadingScreen />;
+  if (!user) return <LoadingScreen />;
   return <>{children}</>;
 }
 
@@ -83,12 +76,12 @@ function NotFound() {
 
 function Router() {
   const hash = useHashRoute();
-  const { path } = parseRoute(hash);
-  const { user, ready } = useStore();
+  const { path, segments } = parseRoute(hash);
+  const { user } = useStore();
 
   useEffect(() => {
-    const { path: p } = parseRoute(hash);
-    document.title = TITLES[p] || "Beyond Reach";
+    const { path: p, segments: segs } = parseRoute(hash);
+    document.title = TITLES[p] || (segs[0] === "dashboard" && segs[1] === "campaigns" && segs[2] ? "Campaign — Beyond Reach" : "Beyond Reach");
     const pending = sessionStorage.getItem("br:scroll");
     if (pending && p === "/") {
       sessionStorage.removeItem("br:scroll");
@@ -100,51 +93,130 @@ function Router() {
     window.scrollTo(0, 0);
   }, [hash]);
 
-  // After a successful Google sign-in, route the user where they wanted to go.
   useEffect(() => {
-    if (user && path === "/login") {
-      const { query } = parseRoute(hash);
-      navigate(query.get("next") || "/dashboard");
+    if (!user) return;
+    // 1) A sign-in the user actively started just completed: dashboard first,
+    //    whichever page (e.g. /book) the sign-in was launched from.
+    if (consumePendingAuth()) {
+      if (!isDashboardRoute(path)) navigate(POST_AUTH_DESTINATION);
+      return;
     }
-  }, [user, path, hash]);
-
-  const pub = (el: React.ReactNode) => (
-    <PublicShell>
-      {el}
-    </PublicShell>
-  );
+    // 2) Auth pages are never shown to a signed-in customer.
+    if (path === "/login" || path === "/register") navigate(POST_AUTH_DESTINATION);
+  }, [user, path]);
 
   switch (path) {
     case "/":
-      return pub(<Home />);
+      return (
+        <PublicShell>
+          <Home />
+        </PublicShell>
+      );
     case "/pricing":
-      return pub(<PricingPage />);
+      return (
+        <PublicShell>
+          <PricingPage />
+        </PublicShell>
+      );
     case "/about":
-      return pub(<AboutPage />);
+      return (
+        <PublicShell>
+          <AboutPage />
+        </PublicShell>
+      );
     case "/support":
-      return pub(<SupportPage />);
+      return (
+        <PublicShell>
+          <SupportPage />
+        </PublicShell>
+      );
     case "/privacy":
-      return pub(<PrivacyPage />);
+      return (
+        <PublicShell>
+          <PrivacyPage />
+        </PublicShell>
+      );
     case "/terms":
-      return pub(<TermsPage />);
+      return (
+        <PublicShell>
+          <TermsPage />
+        </PublicShell>
+      );
     case "/refund":
-      return pub(<RefundPage />);
+      return (
+        <PublicShell>
+          <RefundPage />
+        </PublicShell>
+      );
     case "/book":
       return <BookingPage />;
     case "/login":
-      return !ready || user ? <LoadingScreen /> : <LoginPage />;
-    default: {
-      const view = DASH_VIEWS[path];
-      if (view) {
+      return user ? <LoadingScreen /> : <LoginPage />;
+    case "/register":
+      return user ? <LoadingScreen /> : <RegisterPage />;
+    case "/forgot":
+      return <ForgotPage />;
+    case "/reset":
+      return <ResetPage />;
+    case "/dashboard":
+      return (
+        <RequireAuth next="/dashboard">
+          <DashboardPage view="overview" />
+          <Toasts />
+        </RequireAuth>
+      );
+    case "/dashboard/campaigns":
+      return (
+        <RequireAuth next="/dashboard/campaigns">
+          <DashboardPage view="campaigns" />
+          <Toasts />
+        </RequireAuth>
+      );
+    case "/dashboard/reports":
+      return (
+        <RequireAuth next="/dashboard/reports">
+          <DashboardPage view="reports" />
+          <Toasts />
+        </RequireAuth>
+      );
+    case "/dashboard/notifications":
+      return (
+        <RequireAuth next="/dashboard/notifications">
+          <DashboardPage view="notifications" />
+          <Toasts />
+        </RequireAuth>
+      );
+    case "/dashboard/orders":
+      return (
+        <RequireAuth next="/dashboard/orders">
+          <DashboardPage view="orders" />
+          <Toasts />
+        </RequireAuth>
+      );
+    case "/dashboard/support":
+      return (
+        <RequireAuth next="/dashboard/support">
+          <DashboardPage view="support" />
+          <Toasts />
+        </RequireAuth>
+      );
+    case "/dashboard/account":
+      return (
+        <RequireAuth next="/dashboard/account">
+          <DashboardPage view="account" />
+          <Toasts />
+        </RequireAuth>
+      );
+    default:
+      if (segments[0] === "dashboard" && segments[1] === "campaigns" && segments[2]) {
         return (
-          <RequireAuth next={path}>
-            <DashboardPage view={view} />
+          <RequireAuth next={`/dashboard/campaigns/${segments[2]}`}>
+            <CampaignDetailPage id={segments[2]} />
             <Toasts />
           </RequireAuth>
         );
       }
       return <NotFound />;
-    }
   }
 }
 

@@ -232,7 +232,6 @@ const STATUS_DOT: Record<CampaignStatus, string> = {
   Approved: "#111111",
   Scheduled: "#111111",
   "Under Review": "#d97706",
-  "Payment Confirmed": "#d97706",
   "Payment Pending": "#d97706",
   Paused: "#a3a3a3",
   Rejected: "#dc2626",
@@ -247,41 +246,6 @@ export function StatusPill({ status, className = "" }: { status: CampaignStatus;
       {status}
     </span>
   );
-}
-
-/** Neutral pill for honest "unavailable" states (Not Allocated, Awaiting Report, Not Connected…). */
-export function StatePill({ label, tone = "neutral", className = "" }: { label: string; tone?: "neutral" | "ok" | "warn"; className?: string }) {
-  const dot = tone === "ok" ? "#1f9d55" : tone === "warn" ? "#d97706" : "#a6a6a6";
-  return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full border border-line bg-white px-2.5 py-1 text-[11px] font-medium text-sub ${className}`}>
-      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: dot }} />
-      {label}
-    </span>
-  );
-}
-
-/** Setup / configuration notice — shown instead of any simulated behaviour. */
-export function SetupNotice({ title, body, steps, className = "" }: { title: string; body: string; steps?: string[]; className?: string }) {
-  return (
-    <div className={`rounded-2xl border border-dashed border-ink/25 bg-mist/60 p-5 text-left ${className}`}>
-      <p className="text-sm font-semibold text-ink">{title}</p>
-      <p className="mt-1.5 text-[13px] leading-relaxed text-sub">{body}</p>
-      {steps && steps.length > 0 && (
-        <ol className="mt-3 flex list-decimal flex-col gap-1 pl-4 text-[12.5px] leading-relaxed text-sub">
-          {steps.map((s) => (
-            <li key={s}>
-              <code className="rounded bg-white px-1 py-0.5 font-mono text-[11.5px] text-ink">{s}</code>
-            </li>
-          ))}
-        </ol>
-      )}
-    </div>
-  );
-}
-
-/** Inline error banner, consistent with the design system. */
-export function ErrorBanner({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <p className={`rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-[13px] leading-relaxed text-red-700 anim-fade ${className}`}>{children}</p>;
 }
 
 /* --------------------------- Platform icon -------------------------- */
@@ -584,15 +548,17 @@ export function initials(name: string): string {
     .toUpperCase();
 }
 
-export function Avatar({ name, size = 36, src }: { name: string; size?: number; src?: string | null }) {
+export function Avatar({ name, size = 36, src }: { name: string; size?: number; src?: string }) {
   if (src) {
     return (
       <img
         src={src}
         alt={name}
-        className="inline-flex shrink-0 rounded-full bg-mist object-cover"
-        style={{ width: size, height: size }}
         referrerPolicy="no-referrer"
+        width={size}
+        height={size}
+        className="shrink-0 rounded-full border border-line object-cover"
+        style={{ width: size, height: size }}
       />
     );
   }

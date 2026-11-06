@@ -1,24 +1,17 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
   Check,
   CheckCircle2,
-  ChevronLeft,
-  Copy,
-  Film,
-  Image as ImageIcon,
   Info,
   Lock,
   Mail,
-  MessageCircle,
   ShieldCheck,
-  Upload,
 } from "lucide-react";
 import { navigate, parseRoute, useHashRoute } from "../lib/router";
 import { useStore } from "../lib/store";
 import {
-  BookingDraft,
   CATEGORIES,
   DISCLAIMER,
   LANGUAGES,
@@ -27,29 +20,41 @@ import {
   PLATFORM_ORDER,
   PlatformId,
   SUPPORT_EMAIL,
-  WHATSAPP_NUMBER,
   fmtINR,
 } from "../lib/data";
 import { Field, Input, PlatformChip, Select, Textarea, btnCls } from "../components/ui";
+import { createCampaign, markEmailSent, type StoredCampaign } from "../lib/campaigns";
 import { PublicShell } from "../components/chrome";
-import { GoogleSignInButton } from "../components/GoogleSignin";
 
-const STEP_LABELS = ["Your Business", "Your Advertisement", "Audience & Platforms", "Review & Send"];
+/* ------------------------------------------------------------------ */
+/*  Campaign brief page — frontend only.                               */
+/*  No payment is taken, no order is created and no campaign is        */
+/*  claimed to be running. The brief is handed to the user's own email */
+/*  app so they can send it to our team.                               */
+/* ------------------------------------------------------------------ */
 
-const EMPTY_DRAFT: BookingDraft = {
+interface Brief {
+  businessName: string;
+  category: string;
+  contactName: string;
+  phone: string;
+  campaignName: string;
+  product: string;
+  description: string;
+  location: string;
+  audience: string;
+  language: string;
+  platforms: PlatformId[];
+}
+
+const EMPTY: Brief = {
   businessName: "",
   category: "",
   contactName: "",
-  email: "",
   phone: "",
-  website: "",
   campaignName: "",
   product: "",
   description: "",
-  creativeFile: null,
-  creativeName: "",
-  creativeHelp: false,
-  landingUrl: "",
   location: "",
   audience: "",
   language: "English",
@@ -57,225 +62,217 @@ const EMPTY_DRAFT: BookingDraft = {
 };
 
 const emailOk = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
-const urlOk = (u: string) => !u || /^(https?:\/\/)?([\w-]+\.)+[\w-]{2,}(\/\S*)?$/i.test(u.trim());
-
-/* ------------------------------ Booking page ------------------------------ */
 
 export default function BookingPage() {
-  const { user, ready, toast } = useStore();
+  const { user, toast } = useStore();
   const hash = useHashRoute();
   const { query } = parseRoute(hash);
-  const presetPlatform = query.get("platform") as PlatformId | null;
+  const preset = query.get("platform") as PlatformId | null;
 
-  const [draft, setDraft] = useState<BookingDraft>(EMPTY_DRAFT);
-  const [step, setStep] = useState(0);
+  const initial = useMemo<Brief>(
+    () => ({
+      ...EMPTY,
+      contactName: user?.name || "",
+      businessName: "",
+      platforms: preset && PLATFORM_ORDER.includes(preset) ? [preset] : [],
+    }),
+    [user, preset]
+  );
+
+  const [brief, setBrief] = useState<Brief>(initial);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [opened, setOpened] = useState(false);
+  const [mailto, setMailto] = useState("");
+  const [saved, setSaved] = useState<StoredCampaign | null>(null);
   const [agree, setAgree] = useState(false);
   const [agreeError, setAgreeError] = useState("");
-  const [creativePreview, setCreativePreview] = useState("");
-  const [creativeKind, setCreativeKind] = useState<"image" | "video" | "">("");
-  const fileRef = useRef<HTMLInputElement>(null);
-  const prefilled = useRef(false);
 
-  useEffect(() => {
-    if (user && !prefilled.current) {
-      prefilled.current = true;
-      setDraft((d) => ({
-        ...d,
-        contactName: d.contactName || user.name,
-        email: d.email || user.email,
-        phone: d.phone || user.phone || "",
-        businessName: d.businessName || user.business || "",
-        platforms: presetPlatform && PLATFORM_ORDER.includes(presetPlatform) ? [presetPlatform] : d.platforms,
-      }));
-    }
-  }, [user, presetPlatform]);
-
-  const set = <K extends keyof BookingDraft>(key: K, value: BookingDraft[K]) => {
-    setDraft((d) => ({ ...d, [key]: value }));
+  const set = <K extends keyof Brief>(key: K, value: Brief[K]) => {
+    setBrief((b) => ({ ...b, [key]: value }));
     setErrors((e) => ({ ...e, [key]: "" }));
   };
 
-  const isVideoCreative = creativeKind === "video";
-  const youtubeBlocked = useMemo(
-    () => draft.platforms.includes("youtube") && !isVideoCreative && !draft.creativeHelp,
-    [draft.platforms, draft.creativeHelp, isVideoCreative]
-  );
-
-  const validateStep = (s: number): boolean => {
-    const e: Record<string, string> = {};
-    if (s === 0) {
-      if (draft.businessName.trim().length < 2) e.businessName = "Please enter your business name.";
-      if (!draft.category) e.category = "Please select a category.";
-      if (draft.contactName.trim().length < 2) e.contactName = "Please enter a contact name.";
-      if (!emailOk(draft.email)) e.email = "Please enter a valid email address.";
-      if (!/^[+]?[\d\s-]{10,14}$/.test(draft.phone)) e.phone = "Please enter a valid phone number.";
-      if (!urlOk(draft.website)) e.website = "Please enter a valid website or social link.";
-    }
-    if (s === 1) {
-      if (draft.campaignName.trim().length < 3) e.campaignName = "Give your campaign a name (min. 3 characters).";
-      if (draft.product.trim().length < 2) e.product = "What product or service are you promoting?";
-      if (draft.description.trim().length < 10) e.description = "Please add a short description (min. 10 characters).";
-      if (!draft.creativeFile && !draft.creativeHelp) e.creative = "Please upload your ad creative, or ask us to create one.";
-      if (!urlOk(draft.landingUrl)) e.landingUrl = "Please enter a valid landing page URL.";
-    }
-    if (s === 2) {
-      if (draft.location.trim().length < 2) e.location = "Where should your ads run?";
-      if (draft.audience.trim().length < 3) e.audience = "Describe who should see your ads.";
-      if (draft.platforms.length === 0) e.platforms = "Please select at least one platform.";
-      if (youtubeBlocked) e.platforms = "YouTube requires a video creative. Upload a video, remove YouTube, or ask us to create your ad.";
-    }
-    setErrors(e);
-    return Object.keys(e).length === 0;
-  };
-
-  const next = () => {
-    if (!validateStep(step)) {
-      toast("A few details are missing", "Please review the highlighted fields.", "error");
-      return;
-    }
-    setStep((s) => Math.min(3, s + 1));
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const back = () => {
-    setStep((s) => Math.max(0, s - 1));
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const onFile = (file: File | undefined) => {
-    if (!file) return;
-    if (!["image/jpeg", "image/png", "image/webp", "video/mp4", "video/quicktime"].includes(file.type)) {
-      setErrors((e) => ({ ...e, creative: "Please upload a JPG, PNG, WEBP image or an MP4/MOV video." }));
-      if (fileRef.current) fileRef.current.value = "";
-      return;
-    }
-    if (file.size > 50 * 1024 * 1024) {
-      setErrors((e) => ({ ...e, creative: "File is larger than 50 MB. Please compress it and try again." }));
-      if (fileRef.current) fileRef.current.value = "";
-      return;
-    }
-    const kind = file.type.startsWith("video") ? "video" : "image";
-    setCreativeKind(kind);
-    set("creativeFile", file);
-    set("creativeName", file.name);
-    set("creativeHelp", false);
-    setErrors((e) => ({ ...e, creative: "" }));
-    if (kind === "image" && file.size < 4_000_000) {
-      const reader = new FileReader();
-      reader.onload = () => setCreativePreview(String(reader.result));
-      reader.readAsDataURL(file);
-    } else {
-      setCreativePreview("");
-    }
-  };
-
   const togglePlatform = (p: PlatformId) => {
-    setDraft((d) => ({ ...d, platforms: d.platforms.includes(p) ? d.platforms.filter((x) => x !== p) : [...d.platforms, p] }));
+    setBrief((b) => ({
+      ...b,
+      platforms: b.platforms.includes(p) ? b.platforms.filter((x) => x !== p) : [...b.platforms, p],
+    }));
     setErrors((e) => ({ ...e, platforms: "" }));
   };
 
-  /* ----------------------- booking request (no payment) ----------------------- */
-
-  const requestMessage = useMemo(() => {
+  const buildMailto = () => {
+    const subject = `Campaign brief — ${brief.businessName || "Beyond Reach"}${brief.campaignName ? ` — ${brief.campaignName}` : ""}`;
     const lines = [
-      "Hi Beyond Reach, I'd like to book a Starter Reach campaign (₹399).",
+      "Hello Beyond Reach,",
       "",
-      `Business: ${draft.businessName} (${draft.category})`,
-      `Contact: ${draft.contactName} · ${draft.phone} · ${draft.email}`,
-      draft.website ? `Website/Social: ${draft.website}` : "",
+      "I'd like to discuss the Starter Reach package (₹399). Here is my campaign brief:",
       "",
-      `Campaign: ${draft.campaignName}`,
-      `Product/Service: ${draft.product}`,
-      `Description: ${draft.description}`,
-      `Creative: ${draft.creativeHelp ? "Please design one for me" : draft.creativeName}`,
-      draft.landingUrl ? `Landing page: ${draft.landingUrl}` : "",
+      `Business: ${brief.businessName}`,
+      `Category: ${brief.category}`,
+      `Contact: ${brief.contactName}`,
+      `Phone: ${brief.phone}`,
+      `Account email (Google verified): ${user?.email || ""}`,
       "",
-      `Target location: ${draft.location}`,
-      `Audience: ${draft.audience}`,
-      `Language: ${draft.language}`,
-      `Platforms: ${draft.platforms.map((p) => PLATFORMS[p].name).join(", ")}`,
+      `Campaign: ${brief.campaignName}`,
+      `Product / service: ${brief.product}`,
+      `Description: ${brief.description}`,
+      "",
+      `Location: ${brief.location}`,
+      `Audience: ${brief.audience}`,
+      `Language: ${brief.language}`,
+      `Platforms: ${brief.platforms.map((p) => PLATFORMS[p].name).join(", ")}`,
+      "",
+      "Please let me know the next steps. I understand no payment has been taken and no campaign is running yet.",
+      "",
+      "Thank you.",
     ];
-    return lines.filter((l) => l !== "").join("\n");
-  }, [draft]);
+    return `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join("\n"))}`;
+  };
 
-  const sendWhatsApp = () => {
-    if (!validateStep(2) || !agree) {
-      setAgreeError("Please review the details and confirm the checkbox first.");
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const errs: Record<string, string> = {};
+    if (brief.businessName.trim().length < 2) errs.businessName = "Please enter your business name.";
+    if (!brief.category) errs.category = "Please select a category.";
+    if (brief.contactName.trim().length < 2) errs.contactName = "Please enter a contact name.";
+    if (!/^[+]?[\d\s-]{10,15}$/.test(brief.phone)) errs.phone = "Please enter a valid phone number.";
+    if (brief.campaignName.trim().length < 3) errs.campaignName = "Give your campaign a name (min. 3 characters).";
+    if (brief.product.trim().length < 2) errs.product = "What product or service are you promoting?";
+    if (brief.description.trim().length < 10) errs.description = "Please add a short description (min. 10 characters).";
+    if (brief.location.trim().length < 2) errs.location = "Where should your ads run?";
+    if (brief.audience.trim().length < 3) errs.audience = "Describe who should see your ads.";
+    if (brief.platforms.length === 0) errs.platforms = "Please select at least one platform.";
+    setErrors(errs);
+    setAgreeError("");
+    if (!agree) {
+      setAgreeError("Please confirm you understand no payment is taken on this site.");
+      if (!Object.keys(errs).length) return;
+    }
+    if (Object.keys(errs).length) {
+      toast("A few details are missing", "Please review the highlighted fields.");
       return;
     }
-    setAgreeError("");
-    window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(requestMessage)}`, "_blank", "noopener");
-    toast("Request prepared", "WhatsApp is opening with your booking details. Send the message to us.");
-  };
+    if (!agree) return;
+    if (!user) return;
 
-  const sendEmail = () => {
-    if (!validateStep(2) || !agree) {
-      setAgreeError("Please review the details and confirm the checkbox first.");
+    // 1) Save the brief to this account so it appears in the dashboard.
+    const created = createCampaign(user.uid, {
+      accountId: user.accountId,
+      businessName: brief.businessName.trim(),
+      category: brief.category,
+      contactName: brief.contactName.trim(),
+      email: user.email,
+      phone: brief.phone.trim(),
+      name: brief.campaignName.trim(),
+      product: brief.product.trim(),
+      description: brief.description.trim(),
+      location: brief.location.trim(),
+      audience: brief.audience.trim(),
+      language: brief.language,
+      platforms: brief.platforms,
+    });
+    if (!created.ok || !created.campaign) {
+      toast("Could not save your campaign", created.error || "Please try again.");
       return;
     }
-    setAgreeError("");
-    const subject = encodeURIComponent(`Campaign booking request — ${draft.campaignName}`);
-    const body = encodeURIComponent(requestMessage);
-    window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`;
-    toast("Request prepared", "Your email app is opening with the booking details. Hit send to reach us.");
+    setSaved(created.campaign);
+    if (created.error) toast("Saved for this session only", created.error);
+
+    // 2) Hand the same brief to the customer's own email app for our team.
+    const link = buildMailto();
+    setMailto(link);
+    setOpened(true);
+    markEmailSent(user.uid, created.campaign.id);
+    window.location.href = link;
+    toast("Campaign created", `Brief ${created.campaign.id} was saved to your dashboard.`);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const copyDetails = async () => {
-    try {
-      await navigator.clipboard.writeText(requestMessage);
-      toast("Copied", "Your booking details are on the clipboard — paste them anywhere.");
-    } catch {
-      toast("Could not copy", "Please select and copy the details manually.", "error");
-    }
-  };
-
-  const restart = () => {
-    setDraft({ ...EMPTY_DRAFT });
-    setCreativePreview("");
-    setCreativeKind("");
-    setAgree(false);
-    setAgreeError("");
-    setStep(0);
-    prefilled.current = false;
-  };
-
-  /* ---------- auth gate ---------- */
-  if (!ready) {
-    return (
-      <PublicShell>
-        <div className="flex min-h-[60vh] items-center justify-center pt-28">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-line border-t-ink" aria-label="Loading" />
-        </div>
-      </PublicShell>
-    );
-  }
-
-  if (!user) {
+  /* ---------- sign-in gate (Google identity) ---------- */
+  if (!user || !emailOk(user.email)) {
     return (
       <PublicShell>
         <div className="mx-auto max-w-xl px-5 pb-28 pt-40 text-center anim-fade">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl border border-line bg-mist">
             <Lock size={24} className="text-sub" />
           </div>
-          <h1 className="mt-8 text-4xl font-semibold tracking-[-0.03em]">One quick step first</h1>
+          <h1 className="mt-8 text-4xl font-semibold tracking-[-0.03em]">Sign in to continue</h1>
           <p className="mx-auto mt-4 max-w-md text-[15px] leading-relaxed text-sub">
-            Sign in with Google so your booking details are pre-filled from your profile. New here? The same button creates
-            your account.
+            Sign in with Google so your campaign brief includes a verified email address. No password is created or stored on this
+            site.
           </p>
-          <div className="mx-auto mt-9 flex max-w-[340px] justify-center">
-            <GoogleSignInButton />
+          <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <button onClick={() => navigate("/login")} className={btnCls("primary", "lg")}>
+              Sign in with Google <ArrowRight size={16} />
+            </button>
+            <button onClick={() => navigate("/pricing")} className={btnCls("secondary", "lg")}>
+              View Pricing
+            </button>
           </div>
-          <button onClick={() => navigate("/login")} className="mt-4 text-sm text-sub underline underline-offset-2 transition-colors hover:text-ink cursor-pointer">
-            Continue to the login page
-          </button>
-          <p className="mt-6 text-xs text-faint">Free · verified directly with Google · no password shared with us</p>
+          <p className="mt-6 text-xs leading-relaxed text-faint">
+            After signing in you'll see your dashboard first — then you can start the campaign from there.
+          </p>
         </div>
       </PublicShell>
     );
   }
 
-  /* ---------- form ---------- */
+  if (opened && mailto) {
+    return (
+      <PublicShell>
+        <div className="mx-auto max-w-2xl px-5 pb-28 pt-36 text-center md:pt-44 anim-fade">
+          <div className="anim-pop mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-mist">
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-ink text-white">
+              <Mail size={24} />
+            </span>
+          </div>
+          <h1 className="mt-8 text-4xl font-semibold tracking-[-0.03em]">Campaign created</h1>
+          <p className="mx-auto mt-4 max-w-md text-[15px] leading-relaxed text-sub">
+            Your campaign brief is saved in your dashboard. Your email app should also have opened with the brief pre-filled —
+            press send there so our team receives it. No payment has been taken and no campaign is running yet.
+          </p>
+
+          <div className="mx-auto mt-10 max-w-md rounded-3xl border border-line bg-white p-7 text-left shadow-soft">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-faint">Campaign summary</p>
+            {saved && (
+              <p className="mt-2 font-mono text-xl font-semibold tracking-tight text-ink">{saved.id}</p>
+            )}
+            <dl className="mt-4 flex flex-col gap-3 text-sm">
+              <div className="flex justify-between gap-4"><dt className="text-sub">Status</dt><dd className="text-right font-medium text-ink">Brief Submitted</dd></div>
+              <div className="flex justify-between gap-4"><dt className="text-sub">Business</dt><dd className="font-medium text-ink text-right">{brief.businessName}</dd></div>
+              <div className="flex justify-between gap-4"><dt className="text-sub">Campaign</dt><dd className="font-medium text-ink text-right">{brief.campaignName}</dd></div>
+              <div className="flex justify-between gap-4"><dt className="text-sub">Platforms</dt><dd className="font-medium text-ink text-right">{brief.platforms.map((p) => PLATFORMS[p].name).join(", ")}</dd></div>
+              <div className="flex justify-between gap-4"><dt className="text-sub">Package</dt><dd className="font-medium text-ink text-right">{PACKAGE.name} · {fmtINR(PACKAGE.price)}</dd></div>
+            </dl>
+            <div className="my-5 h-px bg-line" />
+            <p className="text-xs leading-relaxed text-faint">
+              Payment is not processed on this site. If and when payments are enabled, they will require secure server-side
+              verification — never a frontend-only confirmation.
+            </p>
+          </div>
+
+          <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <button onClick={() => navigate("/dashboard")} className={btnCls("primary", "lg")}>
+              Go to Dashboard
+            </button>
+            <a href={mailto} className={btnCls("secondary", "lg")}>
+              <Mail size={16} /> Open email draft again
+            </a>
+          </div>
+          <button
+            onClick={() => {
+              setOpened(false);
+              setSaved(null);
+              setBrief(initial);
+            }}
+            className="mt-5 text-xs text-faint underline underline-offset-2 hover:text-sub cursor-pointer"
+          >
+            Write another brief
+          </button>
+        </div>
+      </PublicShell>
+    );
+  }
 
   const summaryRow = (label: string, value: string) => (
     <div className="flex items-baseline justify-between gap-4 py-2 text-sm">
@@ -288,325 +285,148 @@ export default function BookingPage() {
     <PublicShell>
       <div className="mx-auto max-w-7xl px-5 pb-28 pt-28 md:px-8 md:pt-36 anim-fade">
         <div className="max-w-2xl">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-faint">Book a Campaign</p>
-          <h1 className="mt-4 text-4xl font-semibold tracking-[-0.03em] md:text-5xl">Let's launch your ad.</h1>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-faint">Start a Campaign</p>
+          <h1 className="mt-4 text-4xl font-semibold tracking-[-0.03em] md:text-5xl">Tell us what you're advertising.</h1>
           <p className="mt-4 text-base leading-relaxed text-sub">
-            Four short steps. Our team reviews every request within 24–48 hours — the Starter Reach package is {fmtINR(PACKAGE.price)}.
+            Share your brief and our team will continue by email. You're signed in as{" "}
+            <span className="font-medium text-ink">{user.email}</span>.
           </p>
         </div>
 
-        <div className="mt-12">
-          <div className="flex items-center gap-2">
-            {STEP_LABELS.map((label, i) => (
-              <React.Fragment key={label}>
-                <button
-                  onClick={() => i < step && setStep(i)}
-                  className={`flex items-center gap-2.5 rounded-full border py-2 pl-2 pr-3.5 text-[13px] font-medium transition-all sm:pr-4 ${
-                    i === step ? "border-ink bg-ink text-white" : i < step ? "border-line bg-white text-ink cursor-pointer hover:border-ink/40" : "border-line bg-white text-faint"
-                  }`}
-                >
-                  <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold ${i === step ? "bg-white text-ink" : i < step ? "bg-ink text-white" : "bg-mist text-faint"}`}>
-                    {i < step ? <Check size={12} strokeWidth={3} /> : i + 1}
-                  </span>
-                  <span className="hidden md:inline">{label}</span>
-                </button>
-                {i < STEP_LABELS.length - 1 && <span className={`h-px flex-1 ${i < step ? "bg-ink" : "bg-line"}`} />}
-              </React.Fragment>
-            ))}
-          </div>
-          <p className="mt-3 text-[13px] text-sub md:hidden">
-            Step {step + 1} of 4 — {STEP_LABELS[step]}
+        <div className="mt-6 flex items-start gap-2.5 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
+          <Info size={16} className="mt-0.5 shrink-0 text-amber-600" />
+          <p className="text-[13px] leading-relaxed text-amber-900">
+            <span className="font-semibold">Frontend-only preview.</span> This site does not process payments. Nothing is charged
+            here and no campaign is created or running. Submitting this form opens an email draft in your own email app.
           </p>
         </div>
 
-        <div className="mt-10 grid gap-8 lg:grid-cols-[1fr_380px]">
-          <div className="rounded-[24px] border border-line bg-white p-6 shadow-soft sm:p-9">
-            {step === 0 && (
-              <div className="anim-rise" key="s0">
-                <h2 className="text-xl font-semibold tracking-tight">Your Business</h2>
-                <p className="mt-1.5 text-sm text-sub">Tell us who's advertising. This appears on your reports and receipts.</p>
-                <div className="mt-8 grid gap-5 sm:grid-cols-2">
-                  <Field label="Business Name" error={errors.businessName}>
-                    <Input placeholder="Your business name" value={draft.businessName} onChange={(e) => set("businessName", e.target.value)} error={!!errors.businessName} />
-                  </Field>
-                  <Field label="Business Category" error={errors.category}>
-                    <Select value={draft.category} onChange={(e) => set("category", e.target.value)} error={!!errors.category}>
-                      <option value="" disabled>Select a category</option>
-                      {CATEGORIES.map((c) => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </Select>
-                  </Field>
-                  <Field label="Contact Name" error={errors.contactName}>
-                    <Input placeholder="Your full name" value={draft.contactName} onChange={(e) => set("contactName", e.target.value)} error={!!errors.contactName} />
-                  </Field>
-                  <Field label="Phone Number" error={errors.phone}>
-                    <Input placeholder="+91 98765 43210" value={draft.phone} onChange={(e) => set("phone", e.target.value)} error={!!errors.phone} />
-                  </Field>
-                  <Field label="Email" error={errors.email}>
-                    <Input type="email" placeholder="you@business.com" value={draft.email} onChange={(e) => set("email", e.target.value)} error={!!errors.email} />
-                  </Field>
-                  <Field label="Website or Social Media Link" optional error={errors.website}>
-                    <Input placeholder="instagram.com/yourbusiness" value={draft.website} onChange={(e) => set("website", e.target.value)} error={!!errors.website} />
-                  </Field>
-                </div>
-              </div>
-            )}
+        <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_380px]">
+          <form onSubmit={submit} className="rounded-[24px] border border-line bg-white p-6 shadow-soft sm:p-9" noValidate>
+            <h2 className="text-xl font-semibold tracking-tight">Campaign brief</h2>
+            <p className="mt-1.5 text-sm text-sub">A few details so our team can respond with the right next steps.</p>
 
-            {step === 1 && (
-              <div className="anim-rise" key="s1">
-                <h2 className="text-xl font-semibold tracking-tight">Your Advertisement</h2>
-                <p className="mt-1.5 text-sm text-sub">What are we promoting? Upload your creative — or let our team design one.</p>
-                <div className="mt-8 grid gap-5">
-                  <div className="grid gap-5 sm:grid-cols-2">
-                    <Field label="Campaign Name" error={errors.campaignName}>
-                      <Input placeholder="e.g. Festive Sale 2026" value={draft.campaignName} onChange={(e) => set("campaignName", e.target.value)} error={!!errors.campaignName} maxLength={120} />
-                    </Field>
-                    <Field label="Product or Service" error={errors.product}>
-                      <Input placeholder="e.g. Handcrafted gold jewellery" value={draft.product} onChange={(e) => set("product", e.target.value)} error={!!errors.product} />
-                    </Field>
-                  </div>
-                  <Field label="Short Description" error={errors.description} hint={`${draft.description.length}/160`}>
-                    <Textarea rows={3} maxLength={160} placeholder="A one-line pitch customers will see with your ad…" value={draft.description} onChange={(e) => set("description", e.target.value)} error={!!errors.description} />
-                  </Field>
-
-                  <Field label="Upload Image or Video" error={errors.creative}>
-                    <div>
-                      <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
-                      {draft.creativeFile ? (
-                        <div className="overflow-hidden rounded-2xl border border-line">
-                          {creativePreview ? (
-                            <img src={creativePreview} alt="Your creative preview" className="h-44 w-full object-cover" />
-                          ) : (
-                            <div className="flex h-32 w-full flex-col items-center justify-center gap-2 bg-mist text-sub">
-                              {creativeKind === "video" ? <Film size={26} /> : <ImageIcon size={26} />}
-                              <span className="text-xs">{creativeKind === "video" ? "Video creative" : "Image creative"}</span>
-                            </div>
-                          )}
-                          <div className="flex items-center justify-between gap-3 px-4 py-3">
-                            <span className="flex min-w-0 items-center gap-2 text-sm">
-                              <CheckCircle2 size={16} className="shrink-0 text-emerald-600" />
-                              <span className="truncate font-medium text-ink">{draft.creativeName}</span>
-                              <span className="shrink-0 text-xs text-faint">{(draft.creativeFile.size / 1024 / 1024).toFixed(1)} MB</span>
-                            </span>
-                            <button type="button" onClick={() => fileRef.current?.click()} className="shrink-0 text-[13px] font-medium text-sub underline underline-offset-2 hover:text-ink cursor-pointer">
-                              Replace
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => fileRef.current?.click()}
-                          className="flex w-full flex-col items-center justify-center gap-2.5 rounded-2xl border border-dashed border-ink/25 bg-mist/60 px-6 py-10 text-center transition-all hover:border-ink/50 hover:bg-mist cursor-pointer"
-                        >
-                          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white shadow-soft">
-                            <Upload size={18} className="text-ink" />
-                          </span>
-                          <span className="text-sm font-medium text-ink">Click to upload your ad creative</span>
-                          <span className="text-xs text-faint">Image (JPG, PNG, WEBP) or Video (MP4, MOV) · up to 50 MB</span>
-                        </button>
-                      )}
-                      <label className="mt-4 flex cursor-pointer items-center gap-3 text-sm text-sub">
-                        <input
-                          type="checkbox"
-                          checked={draft.creativeHelp}
-                          onChange={(e) => {
-                            set("creativeHelp", e.target.checked);
-                            if (e.target.checked) {
-                              set("creativeFile", null);
-                              set("creativeName", "");
-                              setCreativePreview("");
-                              setCreativeKind("");
-                              if (fileRef.current) fileRef.current.value = "";
-                            }
-                          }}
-                          className="h-4 w-4 cursor-pointer accent-[#111111]"
-                        />
-                        I don't have a creative — please design one for me
-                        <span className="rounded-full bg-mist px-2 py-0.5 text-[11px] font-medium text-sub">Included</span>
-                      </label>
-                      <p className="mt-2 text-[11px] leading-relaxed text-faint">
-                        Uploaded files stay on your device in this step. Share the final creative with us on WhatsApp or email after sending your request.
-                      </p>
-                    </div>
-                  </Field>
-
-                  <Field label="Landing Page URL" optional error={errors.landingUrl}>
-                    <Input placeholder="Where should people go when they tap your ad?" value={draft.landingUrl} onChange={(e) => set("landingUrl", e.target.value)} error={!!errors.landingUrl} />
-                  </Field>
-                </div>
-              </div>
-            )}
-
-            {step === 2 && (
-              <div className="anim-rise" key="s2">
-                <h2 className="text-xl font-semibold tracking-tight">Audience & Platforms</h2>
-                <p className="mt-1.5 text-sm text-sub">Who should see your ad, and where? Choose one or more platforms.</p>
-                <div className="mt-8 grid gap-5">
-                  <div className="grid gap-5 sm:grid-cols-2">
-                    <Field label="Target Location" error={errors.location}>
-                      <Input placeholder="e.g. Delhi NCR, or All India" value={draft.location} onChange={(e) => set("location", e.target.value)} error={!!errors.location} />
-                    </Field>
-                    <Field label="Preferred Language">
-                      <Select value={draft.language} onChange={(e) => set("language", e.target.value)}>
-                        {LANGUAGES.map((l) => (
-                          <option key={l} value={l}>{l}</option>
-                        ))}
-                      </Select>
-                    </Field>
-                  </div>
-                  <Field label="Target Audience" error={errors.audience}>
-                    <Textarea rows={2} placeholder="e.g. Women aged 25–44 interested in fashion and jewellery" value={draft.audience} onChange={(e) => set("audience", e.target.value)} error={!!errors.audience} />
-                  </Field>
-
-                  <Field label="Select Platforms" error={errors.platforms}>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {PLATFORM_ORDER.map((p) => {
-                        const selected = draft.platforms.includes(p);
-                        const blocked = p === "youtube" && !isVideoCreative && !draft.creativeHelp;
-                        return (
-                          <button
-                            key={p}
-                            type="button"
-                            onClick={() => togglePlatform(p)}
-                            className={`relative flex items-center gap-3.5 rounded-2xl border p-4 text-left transition-all duration-200 cursor-pointer ${
-                              selected ? "border-ink bg-mist/70 ring-1 ring-ink" : "border-line bg-white hover:border-ink/40"
-                            }`}
-                          >
-                            <PlatformChip id={p} size={42} />
-                            <span className="min-w-0 flex-1">
-                              <span className="block text-sm font-semibold text-ink">{PLATFORMS[p].name}</span>
-                              <span className="block truncate text-xs text-faint">via {PLATFORMS[p].via} · {PLATFORMS[p].metricNote}</span>
-                              {blocked && <span className="mt-0.5 block text-[11px] font-medium text-amber-600">Requires a video creative</span>}
-                            </span>
-                            <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-all ${selected ? "border-ink bg-ink text-white" : "border-line text-transparent"}`}>
-                              <Check size={11} strokeWidth={3.5} />
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </Field>
-                  <p className="flex items-start gap-2 text-xs leading-relaxed text-faint">
-                    <Info size={14} className="mt-px shrink-0" />
-                    Final platform allocation is confirmed by our team during review. If a selected platform isn't eligible for your
-                    creative or category, its budget is reallocated to your other platforms and you are informed first.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {step === 3 && (
-              <div className="anim-rise" key="s3">
-                <h2 className="text-xl font-semibold tracking-tight">Review & Send</h2>
-                <p className="mt-1.5 text-sm text-sub">Confirm everything looks right, then send your booking request to our team.</p>
-
-                <div className="mt-8 flex flex-col gap-4">
-                  {[
-                    {
-                      title: "Business",
-                      step: 0,
-                      rows: [
-                        ["Business", draft.businessName],
-                        ["Category", draft.category],
-                        ["Contact", `${draft.contactName} · ${draft.phone}`],
-                        ["Email", draft.email],
-                      ] as [string, string][],
-                    },
-                    {
-                      title: "Advertisement",
-                      step: 1,
-                      rows: [
-                        ["Campaign", draft.campaignName],
-                        ["Product", draft.product],
-                        ["Creative", draft.creativeHelp ? "Designed by Beyond Reach" : draft.creativeName || "—"],
-                      ] as [string, string][],
-                    },
-                    {
-                      title: "Audience & Platforms",
-                      step: 2,
-                      rows: [
-                        ["Location", draft.location],
-                        ["Audience", draft.audience],
-                        ["Language", draft.language],
-                        ["Platforms", draft.platforms.map((p) => PLATFORMS[p].name).join(", ") || "—"],
-                      ] as [string, string][],
-                    },
-                  ].map((block) => (
-                    <div key={block.title} className="rounded-2xl border border-line p-5">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-ink">{block.title}</h3>
-                        <button onClick={() => setStep(block.step)} className="text-[13px] font-medium text-sub underline underline-offset-2 transition-colors hover:text-ink cursor-pointer">
-                          Edit
-                        </button>
-                      </div>
-                      <div className="mt-2 divide-y divide-line/70">
-                        {block.rows.map(([k, v]) => (
-                          <div key={k} className="flex justify-between gap-6 py-2 text-sm">
-                            <span className="shrink-0 text-sub">{k}</span>
-                            <span className="text-right font-medium text-ink break-words">{v || "—"}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+            <div className="mt-8 grid gap-5 sm:grid-cols-2">
+              <Field label="Business Name" error={errors.businessName}>
+                <Input placeholder="e.g. Sharma Jewellers" value={brief.businessName} onChange={(e) => set("businessName", e.target.value)} error={!!errors.businessName} />
+              </Field>
+              <Field label="Business Category" error={errors.category}>
+                <Select value={brief.category} onChange={(e) => set("category", e.target.value)} error={!!errors.category}>
+                  <option value="" disabled>Select a category</option>
+                  {CATEGORIES.map((c) => (
+                    <option key={c} value={c}>{c}</option>
                   ))}
-                </div>
-
-                <div className="mt-5 rounded-2xl border border-dashed border-ink/25 bg-mist/60 p-5">
-                  <p className="text-sm font-semibold text-ink">How booking works in this version</p>
-                  <p className="mt-1.5 text-[13px] leading-relaxed text-sub">
-                    Online payment is not enabled yet. Send your request — our team confirms availability within 24–48 hours and
-                    shares payment details with you. Nothing is charged until you confirm with us directly.
-                  </p>
-                  <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                    <button onClick={sendWhatsApp} className={btnCls("primary", "md")}>
-                      <MessageCircle size={15} /> WhatsApp
-                    </button>
-                    <button onClick={sendEmail} className={btnCls("secondary", "md")}>
-                      <Mail size={15} /> Email
-                    </button>
-                    <button onClick={() => void copyDetails()} className={btnCls("secondary", "md")}>
-                      <Copy size={15} /> Copy details
-                    </button>
-                  </div>
-                  <p className="mt-3 text-[11px] leading-relaxed text-faint">
-                    The buttons open WhatsApp or your email app with all details pre-filled — nothing is sent until you press send there.
-                  </p>
-                </div>
-
-                <label className="mt-6 flex cursor-pointer items-start gap-3 text-[13px] leading-relaxed text-sub">
-                  <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-[#111111]" />
-                  <span>
-                    I confirm my advertisement complies with platform policies and Beyond Reach's{" "}
-                    <button type="button" onClick={() => navigate("/terms")} className="font-medium text-ink underline underline-offset-2">Terms</button>, and I understand views are an estimated target, not a guarantee.
-                  </span>
-                </label>
-                {agreeError && <p className="mt-2 text-xs text-red-600 anim-fade">{agreeError}</p>}
-              </div>
-            )}
-
-            <div className="mt-10 flex items-center justify-between border-t border-line pt-6">
-              {step > 0 ? (
-                <button onClick={back} className={btnCls("secondary", "md")}>
-                  <ChevronLeft size={16} /> Back
-                </button>
-              ) : (
-                <button onClick={() => navigate("/")} className="inline-flex items-center gap-1.5 text-sm text-sub transition-colors hover:text-ink cursor-pointer">
-                  <ArrowLeft size={15} /> Cancel
-                </button>
-              )}
-              {step < 3 ? (
-                <button onClick={next} className={btnCls("primary", "md")}>
-                  Continue <ArrowRight size={16} />
-                </button>
-              ) : (
-                <button onClick={restart} className="text-sm text-sub underline underline-offset-2 transition-colors hover:text-ink cursor-pointer">
-                  Start a new campaign
-                </button>
-              )}
+                </Select>
+              </Field>
+              <Field label="Contact Name" error={errors.contactName}>
+                <Input placeholder="Your full name" value={brief.contactName} onChange={(e) => set("contactName", e.target.value)} error={!!errors.contactName} />
+              </Field>
+              <Field label="Phone Number" error={errors.phone}>
+                <Input placeholder="+91 98765 43210" value={brief.phone} onChange={(e) => set("phone", e.target.value)} error={!!errors.phone} />
+              </Field>
             </div>
-          </div>
+
+            <div className="my-8 h-px bg-line" />
+
+            <div className="grid gap-5 sm:grid-cols-2">
+              <Field label="Campaign Name" error={errors.campaignName}>
+                <Input placeholder="e.g. Festive Sale 2026" value={brief.campaignName} onChange={(e) => set("campaignName", e.target.value)} error={!!errors.campaignName} />
+              </Field>
+              <Field label="Product or Service" error={errors.product}>
+                <Input placeholder="e.g. Handcrafted gold jewellery" value={brief.product} onChange={(e) => set("product", e.target.value)} error={!!errors.product} />
+              </Field>
+            </div>
+            <div className="mt-5">
+              <Field label="Short Description" error={errors.description} hint={`${brief.description.length}/160`}>
+                <Textarea
+                  rows={3}
+                  maxLength={160}
+                  placeholder="A one-line pitch customers will see with your ad…"
+                  value={brief.description}
+                  onChange={(e) => set("description", e.target.value)}
+                  error={!!errors.description}
+                />
+              </Field>
+            </div>
+
+            <div className="my-8 h-px bg-line" />
+
+            <div className="grid gap-5 sm:grid-cols-2">
+              <Field label="Target Location" error={errors.location}>
+                <Input placeholder="e.g. Delhi NCR, or All India" value={brief.location} onChange={(e) => set("location", e.target.value)} error={!!errors.location} />
+              </Field>
+              <Field label="Preferred Language">
+                <Select value={brief.language} onChange={(e) => set("language", e.target.value)}>
+                  {LANGUAGES.map((l) => (
+                    <option key={l} value={l}>{l}</option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+            <div className="mt-5">
+              <Field label="Target Audience" error={errors.audience}>
+                <Textarea
+                  rows={2}
+                  placeholder="e.g. Women aged 25–44 interested in fashion and jewellery"
+                  value={brief.audience}
+                  onChange={(e) => set("audience", e.target.value)}
+                  error={!!errors.audience}
+                />
+              </Field>
+            </div>
+
+            <div className="mt-5">
+              <Field label="Preferred Platforms" error={errors.platforms}>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {PLATFORM_ORDER.map((p) => {
+                    const selected = brief.platforms.includes(p);
+                    return (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => togglePlatform(p)}
+                        className={`relative flex items-center gap-3.5 rounded-2xl border p-4 text-left transition-all duration-200 cursor-pointer ${
+                          selected ? "border-ink bg-mist/70 ring-1 ring-ink" : "border-line bg-white hover:border-ink/40"
+                        }`}
+                      >
+                        <PlatformChip id={p} size={38} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-semibold text-ink">{PLATFORMS[p].name}</span>
+                          <span className="block truncate text-xs text-faint">{PLATFORMS[p].metricNote}</span>
+                        </span>
+                        <span
+                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-all ${
+                            selected ? "border-ink bg-ink text-white" : "border-line text-transparent"
+                          }`}
+                        >
+                          <Check size={11} strokeWidth={3.5} />
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+            </div>
+
+            <label className="mt-7 flex cursor-pointer items-start gap-3 text-[13px] leading-relaxed text-sub">
+              <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-[#111111]" />
+              <span>
+                I understand this site is a frontend-only preview: no payment is taken, no campaign is created, and my brief is
+                only sent if I send the email myself. I agree to the{" "}
+                <button type="button" onClick={() => navigate("/terms")} className="font-medium text-ink underline underline-offset-2">Terms</button>.
+              </span>
+            </label>
+            {agreeError && <p className="mt-2 text-xs text-red-600 anim-fade">{agreeError}</p>}
+
+            <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-6">
+              <button type="button" onClick={() => navigate("/")} className="inline-flex items-center gap-1.5 text-sm text-sub transition-colors hover:text-ink cursor-pointer">
+                <ArrowLeft size={15} /> Cancel
+              </button>
+              <button type="submit" className={btnCls("primary", "lg")}>
+                <Mail size={16} /> Create email brief
+              </button>
+            </div>
+          </form>
 
           <aside className="h-fit lg:sticky lg:top-24">
             <div className="rounded-[24px] border border-line bg-white p-7 shadow-soft">
@@ -623,11 +443,11 @@ export default function BookingPage() {
                 {summaryRow("Taxes (GST)", fmtINR(PACKAGE.tax))}
               </div>
               <div className="flex items-baseline justify-between border-t border-line pt-4">
-                <span className="text-sm font-medium text-ink">Total</span>
+                <span className="text-sm font-medium text-ink">Package total</span>
                 <span className="text-xl font-semibold tnum">{fmtINR(PACKAGE.price)}</span>
               </div>
               <ul className="mt-6 flex flex-col gap-2.5">
-                {["Reviewed within 24–48 hours", "Personal dashboard & reports", "Platform-wise verified statistics"].map((t) => (
+                {["Reviewed within 24–48 hours", "Personal dashboard", "Platform-wise reporting when live"].map((t) => (
                   <li key={t} className="flex items-center gap-2.5 text-[13px] text-sub">
                     <CheckCircle2 size={15} className="shrink-0 text-emerald-600" /> {t}
                   </li>
@@ -638,10 +458,11 @@ export default function BookingPage() {
               <Info size={13} className="mt-px shrink-0" />
               {DISCLAIMER}
             </p>
-            <div className="mt-5 flex items-center gap-3 rounded-2xl bg-mist px-5 py-4">
-              <ShieldCheck size={18} className="shrink-0 text-sub" />
+            <div className="mt-5 flex items-start gap-3 rounded-2xl bg-mist px-5 py-4">
+              <ShieldCheck size={18} className="mt-0.5 shrink-0 text-sub" />
               <p className="text-xs leading-relaxed text-sub">
-                You only pay after our team confirms your campaign — payment details are shared directly. No card is charged on this website.
+                No payment is collected on this site. Secure payments are only possible with server-side verification and are not
+                part of this frontend-only deployment.
               </p>
             </div>
           </aside>

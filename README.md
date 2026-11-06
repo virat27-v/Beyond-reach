@@ -1,122 +1,93 @@
-# Beyond Reach — frontend-only advertising website
+# Beyond Reach — Google Sign-In (rebuilt)
 
-Premium, minimal, **100% frontend-only** site (Vite single-file build, deployed on Vercel).
-No backend, no database. The only integration is **real Google Sign-In via Firebase
-Authentication** (`GoogleAuthProvider`, `signInWithPopup` / `signInWithRedirect`).
+Premium advertising website with a single, production-ready Google sign-in built
+on **Firebase Authentication** (`GoogleAuthProvider`). No backend, no database,
+no Supabase, no fake accounts.
 
-## Environment variables (the only setup)
-
-| Variable | From |
-|---|---|
-| `VITE_FIREBASE_API_KEY` | Firebase web-app config |
-| `VITE_FIREBASE_AUTH_DOMAIN` | Firebase web-app config |
-| `VITE_FIREBASE_PROJECT_ID` | Firebase web-app config |
-| `VITE_FIREBASE_STORAGE_BUCKET` | Firebase web-app config |
-| `VITE_FIREBASE_MESSAGING_SENDER_ID` | Firebase web-app config |
-| `VITE_FIREBASE_APP_ID` | Firebase web-app config |
-
-All six come from **Firebase Console → Project settings → General → Your apps → SDK
-configuration and API keys**. No values are hardcoded in the source.
-
-## Firebase console steps (one time)
-
-1. **Create a Firebase project** (console.firebase.google.com).
-2. **Project settings → General → Your apps → Add app → Web (</>)** → register the app
-   (any nickname). Copy the six `VITE_FIREBASE_*` values from the shown config.
-3. **Authentication → Get started → Sign-in method → Google → Enable**
-   → add your support email → save.
-4. **Make sure your Vercel domain is authorized** —
-   **Project settings → General → Authorized domains**: your production domain
-   (e.g. `beyondreach.vercel.app`) must be listed (Firebase pre-fills the domain used
-   as `authDomain`). If you use a custom domain or preview deployments, add those too.
-   If sign-in ever fails with "This domain is not authorized", this is the place.
-5. No service account, no database, no API keys beyond the public web config —
-   nothing secret is required for Authentication.
-
-## Vercel deployment steps
-
-1. Vercel → your project → **Settings → Environment Variables**.
-2. Add **all six** variables (available for *Production, Preview and Development*).
-3. **Redeploy** (Vercel bakes `VITE_*` values in at build time — a redeploy is
-   required after changing them).
-4. Test on the production domain: sign-in popup on desktop, redirect flow on mobile.
-
-## Run locally
-
-```bash
-# .env with the six VITE_FIREBASE_* values
-npm install
-npm run dev      # http://localhost:5173 (must be in Authorized domains too)
-npm run build    # → dist/index.html (single file)
-```
-
-## Uploading to GitHub → deploying on Vercel
-
-Upload **only these files/folders** (the `.gitignore` already excludes the rest):
+## Authentication architecture
 
 ```
-.env               ← Firebase web config (public by design — safe to commit)
-.env.example
-.gitignore
-README.md
-index.html
-package.json
-package-lock.json
-tsconfig.json
-vite.config.ts
-src/               (the whole src folder)
+src/lib/firebase.ts        ONE Firebase app → ONE Auth instance (initializeAuth)
+                           popup (desktop) / redirect (mobile, tablet, PWA, webview)
+                           getRedirectResult once · onAuthStateChanged once
+                           error capture (code, message, stack) + diagnostics
+src/lib/accounts.ts        Beyond Reach account created once per Firebase UID
+src/lib/store.tsx          single auth store fed by the single listener
+src/components/googleSignIn.tsx  the ONE Google button (branding, loading,
+                           disabled, errors, full-page retry, support details)
 ```
 
-- ❌ **Never upload `node_modules/`** (288 MB — this is why direct uploads fail).
-  Vercel runs `npm install` on its own.
-- ❌ Never upload `dist/` — Vercel builds it.
+- `signInWithPopup` on desktop; `signInWithRedirect` on mobile/tablet/PWA and on
+  any popup-blocked/unsupported error (automatic retry).
+- The redirect result is completed once at app start and provisions the account.
+- Persistence classes are imported directly and passed to `initializeAuth`, so
+  the SDK never resolves a class at runtime (the cause of
+  “Expected a class definition”).
+- No `setPersistence` call, no duplicate listener, no second Firebase app.
+- Sessions survive refresh through Firebase persistence; logout calls
+  `signOut(auth)` and updates the UI immediately.
 
-Then in Vercel: **New Project → Import the GitHub repo → Deploy**.
-Vercel picks up the `.env` from the repo automatically (or add the same six
-`VITE_FIREBASE_*` variables in Vercel → Settings → Environment Variables —
-dashboard values win over the repo file). After deploying, open the production
-domain and sign in — if it says the domain is not authorized, add the domain in
-Firebase Console → Project settings → Authorized domains.
+## Account lifecycle
 
-## How the sign-in flow works
+1. Google authentication returns a Firebase user (`uid`).
+2. `provisionAccount()` looks the UID up in `beyondreach.accounts.v2`.
+3. First time → creates the account with the Google name, email, photo, a stable
+   `BR-XXXXXXXX` account ID, role `customer`, status `Active`, `createdAt` and
+   `lastLoginAt`.
+4. Afterwards → returns the same record, refreshes profile fields and
+   `lastLoginAt`; duplicates are impossible (keyed by UID).
+5. Login and registration both end on `/dashboard`.
 
-- **Desktop** — `signInWithPopup(GoogleAuthProvider)` opens Google's native
-  account-chooser popup.
-- **Mobile** — `signInWithRedirect` performs the full-page redirect flow and returns
-  to the page you were on (`/dashboard` or `/book`).
-- **`onAuthStateChanged`** drives the whole app: session is restored automatically
-  after refresh (Firebase persists it in IndexedDB via explicit
-  `browserLocalPersistence`) and the dashboard route is protected —
-  unauthenticated users are sent to `/login`.
-- **`signOut`** clears the session (nav menu, mobile menu and Account page).
-- **Name, email and profile photo** come from the verified Google user object and are
-  shown across the site.
-- **Errors & cancellation** are handled: cancelled popup, blocked popup,
-  unauthorized-domain, Google provider not enabled, network failure — each with a
-  specific, honest message. Nothing is simulated.
+## Manual configuration (required once)
 
-## User accounts (automatic, no separate registration)
+### Firebase Console
+1. **Authentication → Get started**.
+2. **Sign-in method → Google → Enable** → choose a support email → Save.
+3. **Authentication → Settings → Authorized domains** must contain the exact
+   production hosts (no protocol, no path):
+   - `beyond-reach.vercel.app`
+   - your custom domain, if any
+   - `localhost` only for local development (already present by default)
 
-- The user account **is the Firebase Authentication record**, created automatically
-  when a Google user signs in for the first time. No separate register step exists
-  or is needed.
-- **First sign-in** → account record is created (unique `uid`, registration
-  timestamp), the user is logged in, and the dashboard shows a one-time
-  "account created" welcome with a CTA.
-- **Every later sign-in** (same or different device) resolves to the **same `uid`** —
-  the same account, no duplicates possible.
-- The **Account** page shows the full record: name, email, photo, User ID,
-  registered-on date, last login, and status (Active).
-- Honest scope: this is a frontend-only build, so the account record lives in
-  Firebase Authentication (managed by Google/Firebase) — the site itself stores no
-  user data on any server.
+### Vercel
+**Project → Settings → Environment Variables** (Production + Preview):
 
-## What this version does (and doesn't)
+```
+VITE_FIREBASE_API_KEY=<from Firebase web app config>
+VITE_FIREBASE_AUTH_DOMAIN=beyond-reach-c3fae.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=beyond-reach-c3fae
+VITE_FIREBASE_STORAGE_BUCKET=beyond-reach-c3fae.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=497688569615
+VITE_FIREBASE_APP_ID=1:497688569615:web:b13ff092b9c0f0bc1e807a
+```
 
-- ✅ Homepage (with dashboard preview), pricing, about, legal, support (WhatsApp/email).
-- ✅ Google sign-in → personalized dashboard with honest empty states
-  ("No campaigns yet", "Analytics Not Available Yet").
-- ✅ 4-step booking form → send the request on **WhatsApp / Email / Copy** (pre-filled).
-  No online payment is taken or simulated.
-- ❌ No campaigns are run, no payments taken, no data stored on any server —
-  and the site never claims otherwise.
+Build command `npm run build` · output directory `dist` · then **Redeploy**
+(Vite inlines `VITE_*` at build time).
+
+No Google Cloud OAuth client configuration is required manually: Firebase manages
+the Google provider client. Never put a client secret in the frontend.
+
+## Verifying a deployment
+
+Open the site console:
+
+```js
+__BR_AUTH__()
+```
+
+Expected: `build: "google-signin-rebuild-2026-11-06"`, `sdk.authInitialised: true`,
+`sdk.resolver: true`, `sdk.popup: true`, `sdk.redirect: true`,
+`device.mobileOrEmbedded` true on phones. The sign-in screen shows the same build
+string under the button.
+
+## Verified in this workspace
+
+- `tsc --noEmit` clean, `npm run build` succeeds.
+- 18/18 account-provisioning tests (new user, returning user, no duplicates,
+  stable IDs, role/status/timestamps, storage-blocked behaviour).
+- One Firebase SDK copy, version pinned 13.2.0, no `firebase/compat`, zero
+  `setPersistence` calls, one auth instance, one listener.
+
+Interactive Google account selection requires a real browser and Google account,
+so it is verified on the deployed Vercel site (open `/login`, click Continue with
+Google, choose an account, land on `/dashboard`).

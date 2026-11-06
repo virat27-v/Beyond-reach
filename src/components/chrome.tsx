@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { AlertCircle, ArrowUpRight, CheckCircle2, ChevronDown, Info, LogOut, Menu, X } from "lucide-react";
+import { ArrowUpRight, CheckCircle2, ChevronDown, LogOut, Menu, X } from "lucide-react";
 import { navigate, useHashRoute, parseRoute } from "../lib/router";
 import { useStore } from "../lib/store";
 import { Avatar, Logo, btnCls } from "./ui";
@@ -17,13 +17,7 @@ export function Toasts() {
           onClick={() => dismissToast(t.id)}
           className="anim-toast flex w-full items-start gap-3 rounded-2xl bg-ink px-4 py-3.5 text-left shadow-lift cursor-pointer"
         >
-          {t.tone === "error" ? (
-            <AlertCircle size={18} className="mt-0.5 shrink-0 text-red-400" />
-          ) : t.tone === "info" ? (
-            <Info size={18} className="mt-0.5 shrink-0 text-white/70" />
-          ) : (
-            <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-emerald-400" />
-          )}
+          <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-emerald-400" />
           <span>
             <span className="block text-sm font-medium text-white">{t.title}</span>
             {t.body && <span className="mt-0.5 block text-[13px] leading-snug text-white/60">{t.body}</span>}
@@ -124,7 +118,7 @@ export function Nav() {
                     onClick={() => setMenuOpen((v) => !v)}
                     className="flex items-center gap-2 rounded-full border border-line py-1 pl-1 pr-2.5 transition-colors hover:border-ink/30 cursor-pointer"
                   >
-                    <Avatar name={user.name} size={28} src={user.avatar} />
+                    <Avatar name={user.name} size={28} src={user.picture} />
                     <ChevronDown size={14} className={`text-sub transition-transform ${menuOpen ? "rotate-180" : ""}`} />
                   </button>
                   {menuOpen && (
@@ -138,8 +132,6 @@ export function Nav() {
                         { label: "Overview", to: "/dashboard" },
                         { label: "My Campaigns", to: "/dashboard/campaigns" },
                         { label: "Reports", to: "/dashboard/reports" },
-                        { label: "Payments", to: "/dashboard/payments" },
-                        { label: "Support", to: "/dashboard/support" },
                         { label: "Account Settings", to: "/dashboard/account" },
                       ].map((item) => (
                         <button
@@ -152,8 +144,8 @@ export function Nav() {
                       ))}
                       <div className="my-1 h-px bg-line" />
                       <button
-                        onClick={async () => {
-                          await logout();
+                        onClick={() => {
+                          logout();
                           go("/");
                         }}
                         className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-sub transition-colors hover:bg-mist hover:text-ink cursor-pointer"
@@ -235,8 +227,8 @@ export function Nav() {
                   Go to Dashboard
                 </button>
                 <button
-                  onClick={async () => {
-                    await logout();
+                  onClick={() => {
+                    logout();
                     go("/");
                   }}
                   className={btnCls("secondary", "lg", "w-full")}

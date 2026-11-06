@@ -1,10 +1,11 @@
 import React, { useState } from "react";
-import { ArrowRight, Clock3, Mail, MessageCircle } from "lucide-react";
+import { ArrowRight, CheckCircle2, Clock3, Mail, MessageCircle } from "lucide-react";
 import { navigate } from "../lib/router";
 import { useStore } from "../lib/store";
-import { SUPPORT_EMAIL, SUPPORT_PHONE, WHATSAPP_LINK, WHATSAPP_NUMBER } from "../lib/data";
-import { Accordion, Eyebrow, Field, Input, Reveal, SectionHead, Select, Textarea, btnCls } from "../components/ui";
+import { SUPPORT_EMAIL, SUPPORT_PHONE, WHATSAPP_LINK } from "../lib/data";
+import { Accordion, Btn, Eyebrow, Field, Input, Reveal, SectionHead, Select, Spinner, Textarea, btnCls } from "../components/ui";
 import { FAQS } from "./Pricing";
+import { CountUp } from "./Home";
 
 const OFFICE_IMG =
   "https://images.pexels.com/photos/7652541/pexels-photo-7652541.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200";
@@ -36,9 +37,9 @@ export function AboutPage() {
 
           <Reveal delay={200}>
             <div className="relative mt-14 overflow-hidden rounded-[28px]">
-              <img src={OFFICE_IMG} alt="People planning a marketing campaign" className="h-[320px] w-full object-cover md:h-[480px]" loading="lazy" />
+              <img src={OFFICE_IMG} alt="The Beyond Reach workspace" className="h-[320px] w-full object-cover md:h-[480px]" loading="lazy" />
               <div className="absolute inset-0 bg-gradient-to-t from-ink/35 via-transparent to-transparent" />
-              <p className="absolute bottom-5 left-6 text-sm font-medium text-white/90">Campaigns planned, launched and measured — with nothing to hide.</p>
+              <p className="absolute bottom-5 left-6 text-sm font-medium text-white/90">Where campaigns are planned, launched and measured.</p>
             </div>
           </Reveal>
         </div>
@@ -96,12 +97,15 @@ export function AboutPage() {
               />
               <div className="mt-12 grid grid-cols-3 gap-8">
                 {[
-                  { v: "₹399", l: "One clear price" },
-                  { v: "4", l: "Ad platforms" },
-                  { v: "24–48h", l: "Typical review time" },
+                  { v: 140, s: "+", l: "Campaigns launched" },
+                  { v: 96, s: "%", l: "Clients who return" },
+                  { v: 48, s: "h", l: "Typical launch time" },
                 ].map((st) => (
                   <div key={st.l}>
-                    <p className="text-3xl font-semibold tracking-tight tnum md:text-4xl">{st.v}</p>
+                    <p className="text-3xl font-semibold tracking-tight md:text-4xl">
+                      <CountUp end={st.v} />
+                      <span className="text-faint">{st.s}</span>
+                    </p>
                     <p className="mt-1.5 text-[11px] font-medium uppercase tracking-[0.14em] text-faint">{st.l}</p>
                   </div>
                 ))}
@@ -152,36 +156,31 @@ export function AboutPage() {
 
 export function SupportPage() {
   const { user, toast } = useStore();
-  const [form, setForm] = useState({ name: user?.name || "", email: user?.email || "", subject: "Campaign question", message: "" });
+  const [form, setForm] = useState({ name: user?.name || "", email: user?.email || "", subject: "Campaign question", message: "", campaignId: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [formError, setFormError] = useState("");
+  const [busy] = useState(false);
+  const [ticket, setTicket] = useState<string | null>(null);
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  const compose = () => `${form.subject}: ${form.message.trim()}\n\n— ${form.name} (${form.email})`;
-
-  const valid = () => {
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
     const errs: Record<string, string> = {};
     if (form.name.trim().length < 2) errs.name = "Please enter your name.";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errs.email = "Please enter a valid email.";
     if (form.message.trim().length < 10) errs.message = "Please describe how we can help (min. 10 characters).";
     setErrors(errs);
-    setFormError("");
-    return Object.keys(errs).length === 0;
+    if (Object.keys(errs).length) return;
+    const subject = encodeURIComponent(`Beyond Reach support — ${form.subject}${form.campaignId ? ` (${form.campaignId})` : ""}`);
+    const body = encodeURIComponent(
+      `Name: ${form.name}\nEmail: ${form.email}\nCampaign ID: ${form.campaignId || "—"}\n\n${form.message}`
+    );
+    window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`;
+    setTicket("EMAIL");
+    toast("Email draft created", "Send it from your email app — nothing is transmitted from this page.");
   };
 
-  const sendWhatsApp = () => {
-    if (!valid()) return;
-    window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(compose())}`, "_blank", "noopener");
-    toast("Request prepared", "WhatsApp is opening with your message — send it to reach us.");
-  };
-
-  const sendEmail = () => {
-    if (!valid()) return;
-    window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(form.subject)}&body=${encodeURIComponent(compose())}`;
-    toast("Request prepared", "Your email app is opening — hit send to reach us.");
-  };
 
   return (
     <div className="anim-fade">
@@ -223,8 +222,8 @@ export function SupportPage() {
                 body: "Monday to Saturday. Campaign reviews run on business days.",
                 meta: "10:00 AM – 7:00 PM IST",
                 action: (
-                  <button onClick={() => navigate("/book")} className={btnCls("secondary", "md", "w-full")}>
-                    Book a Campaign
+                  <button onClick={() => navigate("/dashboard/notifications")} className={btnCls("secondary", "md", "w-full")}>
+                    Check Campaign Updates
                   </button>
                 ),
               },
@@ -249,38 +248,59 @@ export function SupportPage() {
           <SectionHead eyebrow="Contact Form" title="Send us a message." />
           <Reveal delay={120}>
             <div className="mt-12 rounded-[24px] border border-line bg-white p-7 shadow-soft md:p-10">
-              <div className="grid gap-5">
-                <div className="grid gap-5 sm:grid-cols-2">
-                  <Field label="Your Name" error={errors.name}>
-                    <Input value={form.name} onChange={set("name")} placeholder="Full name" error={!!errors.name} />
-                  </Field>
-                  <Field label="Email" error={errors.email}>
-                    <Input type="email" value={form.email} onChange={set("email")} placeholder="you@business.com" error={!!errors.email} />
-                  </Field>
-                </div>
-                <Field label="Subject">
-                  <Select value={form.subject} onChange={set("subject")}>
-                    {["Campaign question", "Payment & billing", "Report issue", "Creative help", "Account help", "Something else"].map((x) => (
-                      <option key={x}>{x}</option>
-                    ))}
-                  </Select>
-                </Field>
-                <Field label="Message" error={errors.message}>
-                  <Textarea rows={5} value={form.message} onChange={set("message")} placeholder="How can we help?" error={!!errors.message} maxLength={4000} />
-                </Field>
-                {formError && <p className="text-[13px] text-red-600 anim-fade">{formError}</p>}
-                <div className="flex flex-wrap gap-2">
-                  <button onClick={sendWhatsApp} className={btnCls("primary", "lg")}>
-                    <MessageCircle size={16} /> Send on WhatsApp
-                  </button>
-                  <button onClick={sendEmail} className={btnCls("secondary", "lg")}>
-                    <Mail size={16} /> Send by Email
+              {ticket ? (
+                <div className="py-8 text-center anim-rise">
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                    <CheckCircle2 size={26} />
+                  </div>
+                  <h3 className="mt-6 text-xl font-semibold tracking-tight">Your email draft is ready</h3>
+                  <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-sub">
+                    Your email app should have opened with your message pre-filled for{" "}
+                    <span className="font-medium text-ink">{form.email}</span>. Nothing has been sent yet — press send there to
+                    reach our team.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setTicket(null);
+                      setForm({ ...form, message: "", campaignId: "" });
+                    }}
+                    className={btnCls("secondary", "md", "mt-7")}
+                  >
+                    Send Another Message
                   </button>
                 </div>
-                <p className="text-[11px] leading-relaxed text-faint">
-                  The buttons open WhatsApp or your email app with your message pre-filled — nothing is sent until you press send there.
-                </p>
-              </div>
+              ) : (
+                <form onSubmit={submit} className="grid gap-5" noValidate>
+                  <div className="grid gap-5 sm:grid-cols-2">
+                    <Field label="Your Name" error={errors.name}>
+                      <Input value={form.name} onChange={set("name")} placeholder="Full name" error={!!errors.name} />
+                    </Field>
+                    <Field label="Email" error={errors.email}>
+                      <Input type="email" value={form.email} onChange={set("email")} placeholder="you@business.com" error={!!errors.email} />
+                    </Field>
+                  </div>
+                  <div className="grid gap-5 sm:grid-cols-2">
+                    <Field label="Subject">
+                      <Select value={form.subject} onChange={set("subject")}>
+                        {["Campaign question", "Payment & billing", "Report issue", "Creative help", "Account help", "Something else"].map((s) => (
+                          <option key={s}>{s}</option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field label="Campaign ID" optional>
+                      <Input value={form.campaignId} onChange={set("campaignId")} placeholder="e.g. BR-2026-1042" />
+                    </Field>
+                  </div>
+                  <Field label="Message" error={errors.message}>
+                    <Textarea rows={5} value={form.message} onChange={set("message")} placeholder="How can we help?" error={!!errors.message} />
+                  </Field>
+                  <div className="flex justify-end">
+                    <Btn type="submit" size="lg" disabled={busy}>
+                      {busy ? <Spinner size={16} /> : <>Send Message <ArrowRight size={16} /></>}
+                    </Btn>
+                  </div>
+                </form>
+              )}
             </div>
           </Reveal>
         </div>
@@ -376,7 +396,7 @@ export function PrivacyPage() {
           body: [
             "Account information: your name, email address, phone number and business details when you register or book a campaign.",
             "Campaign information: the advertisements, creatives, targeting preferences and landing pages you submit so we can run your campaigns.",
-            "Payment information: this website does not take online payments today. When online payments are introduced, they will be processed by a PCI-DSS compliant payment partner, and we will never store your full card or UPI credentials on our servers.",
+            "Payment information: payments are processed by our PCI-DSS compliant payment partner (Razorpay). We never store your full card or UPI credentials on our servers.",
             "Usage information: how you interact with your dashboard, so we can improve the product and keep your account secure.",
           ],
         },
