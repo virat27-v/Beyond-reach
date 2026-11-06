@@ -1,17 +1,9 @@
 import React from "react";
-import { ArrowLeft, ArrowRight, ExternalLink, Info, Lock } from "lucide-react";
 import { navigate } from "../lib/router";
 import { Logo, btnCls } from "../components/ui";
-import GoogleSignIn, { GoogleAuthHeader } from "../components/googleSignIn";
+import { GoogleSignInButton } from "../components/GoogleSignin";
 
-/* ------------------------------------------------------------------ */
-/*  Frontend-only authentication with Firebase Authentication.         */
-/*  The ONLY sign-in mechanism is Google via GoogleAuthProvider.       */
-/*  No email/password is accepted here, and no fake account exists.    */
-/* ------------------------------------------------------------------ */
-
-
-function AuthShell({ children, title, sub }: { children: React.ReactNode; title: string; sub: string }) {
+export function AuthShell({ children, title, sub }: { children: React.ReactNode; title: string; sub: string }) {
   return (
     <div className="flex min-h-screen bg-white anim-fade">
       {/* brand panel */}
@@ -55,11 +47,12 @@ function AuthShell({ children, title, sub }: { children: React.ReactNode; title:
             <Logo />
           </button>
           <span className="hidden lg:block" />
-          <button
-            onClick={() => navigate("/")}
-            className="inline-flex items-center gap-1.5 text-sm text-sub transition-colors hover:text-ink cursor-pointer"
-          >
-            <ArrowLeft size={15} /> Back to website
+          <button onClick={() => navigate("/")} className="inline-flex items-center gap-1.5 text-sm text-sub transition-colors hover:text-ink cursor-pointer">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M19 12H5" />
+              <path d="m12 19-7-7 7-7" />
+            </svg>{" "}
+            Back to website
           </button>
         </div>
         <div className="flex flex-1 items-center justify-center px-5 pb-16 pt-4">
@@ -78,92 +71,17 @@ function AuthShell({ children, title, sub }: { children: React.ReactNode; title:
 
 export function LoginPage() {
   return (
-    <AuthShell title="Welcome back" sub="Sign in securely with Google to access your Beyond Reach dashboard.">
-      <GoogleSignIn next="/dashboard" mode="login" />
-    </AuthShell>
-  );
-}
-
-/* -------------------------------- Register ---------------------------- */
-
-export function RegisterPage() {
-  const next = "/dashboard";
-  return (
-    <AuthShell title="Create your account" sub="One tap with Google. No forms, no passwords to remember.">
-      <GoogleAuthHeader />
-      <GoogleSignIn next="/dashboard" mode="register" />
-      <p className="mt-6 text-center text-[11px] leading-relaxed text-faint">
-        By continuing with Google you agree to our{" "}
-        <button onClick={() => navigate("/terms")} className="font-medium text-ink underline underline-offset-2 cursor-pointer">
-          Terms
-        </button>{" "}
-        and{" "}
-        <button onClick={() => navigate("/privacy")} className="font-medium text-ink underline underline-offset-2 cursor-pointer">
-          Privacy Policy
-        </button>
-        .
-      </p>
-      <p className="mt-7 text-center text-sm text-sub">
-        Already have an account?{" "}
-        <button onClick={() => navigate(`/login?next=${encodeURIComponent(next)}`)} className="font-medium text-ink u-link cursor-pointer">
-          Sign in
-        </button>
-      </p>
-    </AuthShell>
-  );
-}
-
-/* ------------------------- Password guidance ------------------------- */
-
-function GooglePasswordHelp({ title }: { title: string }) {
-  return (
     <AuthShell
-      title={title}
-      sub="Beyond Reach accounts created with Google use Google's own secure account recovery."
+      title="Welcome to Beyond Reach"
+      sub="Sign in with Google to open your dashboard. New here? The same button creates your account."
     >
-      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-mist text-sub">
-        <Lock size={24} />
-      </div>
-      <p className="mt-5 text-[15px] leading-relaxed text-sub">
-        There is no separate Beyond Reach password to reset. Your credentials are managed entirely by Google. To recover or change
-        your password, use your Google Account.
-      </p>
-      <div className="mt-5 rounded-xl bg-mist px-4 py-3.5 text-[13px] leading-relaxed text-sub">
-        This website is a frontend-only deployment: it holds no accounts, no passwords and no database.
-      </div>
-      <a
-        href="https://accounts.google.com/signin/recovery"
-        target="_blank"
-        rel="noreferrer"
-        className={btnCls("primary", "lg", "mt-6 w-full")}
-      >
-        Open Google Account recovery <ExternalLink size={15} />
-      </a>
-      <button
-        onClick={() => navigate("/login")}
-        className="mt-4 inline-flex w-full items-center justify-center gap-1.5 text-sm text-sub transition-colors hover:text-ink cursor-pointer"
-      >
-        <ArrowLeft size={15} /> Back to sign in
+      <GoogleSignInButton />
+      <button onClick={() => navigate("/book")} className={`${btnCls("secondary", "lg", "mt-4 w-full")}`}>
+        Not ready to sign in? Book a campaign
       </button>
+      <p className="mt-6 text-center text-xs leading-relaxed text-faint">
+        Your Google account is verified directly with Google on every visit. We never ask for or store your password.
+      </p>
     </AuthShell>
-  );
-}
-
-export function ForgotPage() {
-  return <GooglePasswordHelp title="Account recovery" />;
-}
-
-export function ResetPage() {
-  return <GooglePasswordHelp title="Reset your password" />;
-}
-
-/* Kept for deep links from older mails. */
-export function AuthInfoNote() {
-  return (
-    <p className="flex items-start gap-2 rounded-xl border border-line bg-white px-4 py-3 text-xs leading-relaxed text-sub">
-      <Info size={14} className="mt-px shrink-0" />
-      Beyond Reach uses Google Sign-In. Your email address alone is never treated as authentication.
-      <ArrowRight size={12} className="ml-auto mt-0.5 shrink-0 text-faint" />
-    </p>
   );
 }

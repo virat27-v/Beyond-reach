@@ -1,10 +1,32 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, ArrowUpRight, Eye, Headphones, ShieldCheck } from "lucide-react";
 import { navigate } from "../lib/router";
-import { PLATFORM_ORDER, PLATFORMS, PlatformId } from "../lib/data";
-import { Accordion, PlatformChip, Reveal, SectionHead, btnCls } from "../components/ui";
-import DashboardPreview from "../components/dashboardPreview";
+import { PLATFORM_ORDER, PLATFORMS, PlatformId, fmtCompact, fmtDateShort } from "../lib/data";
+import { Accordion, AreaChart, CompareBars, PlatformChip, Reveal, SectionHead, StatePill, btnCls } from "../components/ui";
 import { FAQS, PricingSection } from "./Pricing";
+
+/* --------------------------- in-view on scroll -------------------------- */
+
+function useInView<T extends HTMLElement>(threshold = 0.3) {
+  const ref = useRef<T | null>(null);
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      ([e]) => {
+        if (e.isIntersecting) {
+          setInView(true);
+          io.disconnect();
+        }
+      },
+      { threshold },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [threshold]);
+  return { ref, inView };
+}
 
 /* ------------------------------ CountUp ----------------------------- */
 
@@ -42,6 +64,105 @@ export function CountUp({ end, duration = 1600, className = "" }: { end: number;
     <span ref={ref} className={`tnum ${className}`}>
       {val.toLocaleString("en-IN")}
     </span>
+  );
+}
+
+/* --------------------------- Hero console --------------------------- */
+
+/* Illustrative dashboard preview (clearly labelled). Numbers animate when scrolled into view. */
+const PREVIEW_DAILY = [1420, 1610, 1490, 1740, 1890, 1660, 2080, 2350, 2210, 2480, 2810, 2620, 2710, 2190]; // = 29,260
+const PREVIEW_TOTALS = { views: 29260, reach: 22300, impressions: 42200, clicks: 1000 };
+const PREVIEW_PLATFORMS: { id: PlatformId; value: number }[] = [
+  { id: "instagram", value: 12600 },
+  { id: "facebook", value: 7700 },
+  { id: "youtube", value: 5400 },
+  { id: "google", value: 3500 },
+];
+
+function HeroConsole() {
+  const { ref, inView } = useInView<HTMLDivElement>(0.3);
+
+  const chartData = useMemo(() => {
+    const out: { label: string; value: number }[] = [];
+    for (let i = 0; i < PREVIEW_DAILY.length; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() - (PREVIEW_DAILY.length - 1 - i));
+      out.push({ label: fmtDateShort(d.toISOString().slice(0, 10)), value: PREVIEW_DAILY[i] });
+    }
+    return out;
+  }, []);
+
+  const bars = useMemo(
+    () =>
+      PREVIEW_PLATFORMS.map((p) => ({
+        id: p.id,
+        name: PLATFORMS[p.id].name,
+        value: p.value,
+        sub: `${Math.round((p.value / PREVIEW_TOTALS.views) * 100)}% of views`,
+      })),
+    []
+  );
+
+  return (
+    <div ref={ref} className="relative rounded-[28px] border border-line bg-white shadow-soft text-left">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-6 py-4 md:px-8">
+        <div className="flex items-center gap-2.5">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute h-full w-full rounded-full bg-emerald-500" style={{ animation: "ringPulse 2s ease-out infinite" }} />
+            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+          </span>
+          <span className="text-[13px] font-medium text-ink">Campaign Performance</span>
+          <span className="hidden text-[13px] text-faint sm:inline">· Last 14 days</span>
+        </div>
+        <StatePill label="Preview" />
+      </div>
+
+      <div className="grid lg:grid-cols-5">
+        <div className="px-6 pt-6 md:px-8 lg:col-span-3 lg:pb-8">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-faint">Total views</p>
+          <div className="mt-2 flex items-baseline gap-3">
+            <CountUp end={PREVIEW_TOTALS.views} className="text-[44px] font-semibold leading-none tracking-[-0.03em]" />
+            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">+18.4%</span>
+          </div>
+          <div className="mt-6">
+            {inView ? (
+              <AreaChart data={chartData} height={190} />
+            ) : (
+              <div className="h-[190px] w-full" aria-hidden="true" />
+            )}
+          </div>
+          <div className="mt-4 grid grid-cols-3 divide-x divide-line border-t border-line pt-5">
+            {[
+              { label: "Reach", value: PREVIEW_TOTALS.reach },
+              { label: "Impressions", value: PREVIEW_TOTALS.impressions },
+              { label: "Clicks", value: PREVIEW_TOTALS.clicks },
+            ].map((s) => (
+              <div key={s.label} className="px-4 first:pl-0">
+                <p className="text-lg font-semibold tracking-tight tnum md:text-xl">{fmtCompact(s.value)}</p>
+                <p className="mt-0.5 text-[11px] uppercase tracking-[0.14em] text-faint">{s.label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="border-t border-line px-6 py-6 md:px-8 lg:col-span-2 lg:border-l lg:border-t-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-faint">Views by platform</p>
+          <div className="mt-5">
+            {inView ? (
+              <CompareBars items={bars} />
+            ) : (
+              <div className="h-[170px] w-full" aria-hidden="true" />
+            )}
+          </div>
+          <div className="mt-7 rounded-2xl bg-mist p-4">
+            <p className="text-[13px] leading-relaxed text-sub">
+              Every campaign includes <span className="font-medium text-ink">platform-wise reporting</span> — so you always know
+              exactly where your views came from.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -90,43 +211,34 @@ function Hero() {
             </div>
           </Reveal>
           <Reveal delay={400}>
-            <p className="mt-6 text-[13px] text-faint">No long-term contracts · Launch in 24–48 hours · Cancel anytime before launch</p>
+            <p className="mt-7 text-[13px] text-faint">No long-term contracts · Launch in 24–48 hours · Cancel anytime before launch</p>
           </Reveal>
         </div>
 
-        {/* Dashboard preview — directly below the hero CTA.
-            Numbers count up as the visitor scrolls this card into view. */}
-        <Reveal delay={250} className="relative mx-auto mt-12 max-w-5xl md:mt-16">
-          <DashboardPreview />
-          <p className="mt-4 text-center text-xs text-faint">
-            Illustrative preview of your client dashboard. Campaign data appears here only when a secure advertising backend is connected.
-          </p>
+        <Reveal delay={250} className="relative mx-auto mt-16 max-w-5xl md:mt-20">
+          <HeroConsole />
+          <p className="mt-4 text-center text-xs text-faint">Illustrative preview of your client dashboard. Your dashboard shows your real campaign data.</p>
         </Reveal>
       </div>
     </section>
   );
 }
 
-/* --------------------------- Platform strip --------------------------- */
+/* ----------------------------- Platform strip ---------------------------- */
 
-function LogoStrip() {
+function PlatformStrip() {
   return (
     <section className="border-b border-line py-14 mt-20">
       <div className="mx-auto max-w-7xl px-5 md:px-8">
         <Reveal>
-          <p className="text-center text-[11px] font-semibold uppercase tracking-[0.24em] text-faint">
-            Advertising platforms Beyond Reach works with
-          </p>
+          <p className="text-center text-[11px] font-semibold uppercase tracking-[0.24em] text-faint">Campaigns run on official advertising platforms</p>
         </Reveal>
         <Reveal delay={100}>
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-4 sm:gap-6">
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-x-10 gap-y-5">
             {PLATFORM_ORDER.map((p) => (
-              <span
-                key={p}
-                className="flex items-center gap-2.5 rounded-2xl border border-line bg-white px-5 py-3 text-base font-semibold tracking-tight text-ink/70 shadow-soft transition-colors duration-300 hover:text-ink"
-              >
+              <span key={p} className="flex items-center gap-2.5 text-base font-semibold tracking-tight text-ink/40 transition-colors duration-300 hover:text-ink/80">
                 <PlatformChip id={p} size={30} />
-                {PLATFORMS[p].name}
+                {PLATFORMS[p].name} <span className="text-xs font-normal text-faint">via {PLATFORMS[p].via}</span>
               </span>
             ))}
           </div>
@@ -153,7 +265,7 @@ function Services() {
           align="left"
           eyebrow="Services"
           title="Everything your brand needs to get noticed."
-          sub="Four platforms. One team. Zero complexity. We run your campaigns end-to-end — you watch the verified results roll in."
+          sub="Four platforms. One team. Zero complexity. We run your campaigns end-to-end — you watch the results roll in."
         />
 
         <div className="mt-16 border-t border-line">
@@ -214,13 +326,13 @@ const STEPS = [
   },
   {
     num: "03",
-    title: "Share Your Brief",
-    body: "Send your business and campaign details to our team. You can review everything before anything is shared.",
+    title: "We Launch Your Campaign",
+    body: "Our team reviews, approves and schedules your campaign across your selected platforms within 24–48 hours.",
   },
   {
     num: "04",
-    title: "Review & Plan Launch",
-    body: "Our team reviews eligibility and next steps with you by email. Verified platform reporting appears only when a campaign actually launches.",
+    title: "Track Your Performance",
+    body: "Follow views, reach and platform-wise results in real time from your personal dashboard. Download reports anytime.",
   },
 ];
 
@@ -265,11 +377,11 @@ function HowItWorks() {
 /* ---------------------------- Principles ----------------------------- */
 
 function Principles() {
-  const stats = [
-    { value: 399, prefix: "₹", suffix: "", label: "To start advertising" },
-    { value: 4, prefix: "", suffix: "", label: "Ad platforms managed" },
-    { value: 48, prefix: "", suffix: "h", label: "Typical time to launch" },
-    { value: 100, prefix: "", suffix: "%", label: "Transparent pricing" },
+  const facts = [
+    { value: "₹399", label: "One transparent price" },
+    { value: "4", label: "Advertising platforms" },
+    { value: "24–48h", label: "Typical review time" },
+    { value: "0", label: "Hidden charges" },
   ];
   const principles = [
     {
@@ -318,13 +430,9 @@ function Principles() {
         </div>
 
         <div className="mt-16 grid grid-cols-2 gap-10 border-t border-white/10 pt-12 lg:grid-cols-4">
-          {stats.map((s, i) => (
+          {facts.map((s, i) => (
             <Reveal key={s.label} delay={i * 80}>
-              <p className="text-4xl font-semibold tracking-tight md:text-5xl">
-                {s.prefix}
-                <CountUp end={s.value} />
-                <span className="text-white/50">{s.suffix}</span>
-              </p>
+              <p className="text-4xl font-semibold tracking-tight tnum md:text-5xl">{s.value}</p>
               <p className="mt-2 text-[11px] font-medium uppercase tracking-[0.18em] text-white/40">{s.label}</p>
             </Reveal>
           ))}
@@ -374,7 +482,7 @@ function FinalCta() {
                 Ready to take your brand <span className="font-light italic text-white/70">beyond reach?</span>
               </h2>
               <p className="mx-auto mt-6 max-w-md text-base leading-relaxed text-white/60 md:text-lg">
-                Start advertising with Beyond Reach today. Your first campaign is ₹399 — and about ten minutes away.
+                One transparent package, verified reporting and a team that answers. Your first campaign is ₹399 — and about ten minutes away.
               </p>
               <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
                 <button onClick={() => navigate("/book")} className={btnCls("white", "lg")}>
@@ -402,7 +510,7 @@ export default function Home() {
   return (
     <div className="anim-fade">
       <Hero />
-      <LogoStrip />
+      <PlatformStrip />
       <Services />
       <HowItWorks />
       <Principles />
