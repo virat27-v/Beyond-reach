@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { getRedirectResult, onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut } from "firebase/auth";
+import { getRedirectResult, onAuthStateChanged, signInWithRedirect, signOut } from "firebase/auth";
 import { User, UserData, emptyData, uid } from "./data";
 import {
   AUTH_READY,
@@ -9,7 +9,6 @@ import {
   browserPopupRedirectResolver,
   friendlyFirebaseError,
   googleProvider,
-  isLikelyMobile,
 } from "./firebase";
 
 /* ------------------------------------------------------------------ */
@@ -27,7 +26,7 @@ export interface Toast {
   tone?: "success" | "error" | "info";
 }
 
-type Result = { ok: true } | { ok: false; error: string; code?: string };
+type Result = { ok: true; redirected?: boolean } | { ok: false; error: string; code?: string };
 
 interface Store {
   firebaseConfigured: boolean;
@@ -145,44 +144,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         };
       }
       const target = next || "/dashboard";
-      // Full-page redirect flow (mobile-first). Also used as the automatic
-      // desktop fallback when a popup is blocked or unsupported.
-      const doRedirect = async () => {
+      // Always use full-page redirect. Popups fail on Vercel/Safari/in-app browsers
+      // with a false `auth/popup-closed-by-user` and do not work on mobile.
+      // Redirect works on every device: desktop, phone, tablet.
+      try {
         sessionStorage.setItem(PENDING_REDIRECT_KEY, "1");
         sessionStorage.setItem(NEXT_PATH_KEY, target);
         await signInWithRedirect(fbAuth, googleProvider(), browserPopupRedirectResolver);
-      };
-      try {
-        if (isLikelyMobile()) {
-          // Mobile browsers: popups are blocked or unreliable → redirect flow.
-          await doRedirect();
-          return { ok: true };
-        }
-        // Desktop: native Google account-chooser popup.
-        // Firebase automatically creates the account record on first sign-in
-        // and returns the same record on every later sign-in (no duplicates).
-        try {
-          const cred = await signInWithPopup(fbAuth, googleProvider(), browserPopupRedirectResolver);
-          if (cred.user) {
-            const u = toAppUser(cred.user);
-            toast(
-              u.isFirstLogin ? "Account created" : "Welcome back",
-              u.isFirstLogin ? `Your Beyond Reach account was created with ${u.email}.` : `Signed in as ${u.name}.`
-            );
-          }
-          return { ok: true };
-        } catch (popupErr) {
-          const code = (popupErr as { code?: string })?.code ?? "";
-          if (code === "auth/popup-blocked" || code === "auth/operation-not-supported-in-this-environment") {
-            // Some browsers/environments (kiosks, in-app browsers, strict
-            // settings) cannot host the popup — fall back to the redirect
-            // flow automatically instead of surfacing an error.
-            console.warn("[BR-AUTH] Popup unavailable in this environment — using redirect flow.", popupErr);
-            await doRedirect();
-            return { ok: true };
-          }
-          throw popupErr;
-        }
+        return { ok: true, redirected: true };
       } catch (e) {
         return { ok: false, error: friendlyFirebaseError(e), code: authErrorCode(e) };
       }

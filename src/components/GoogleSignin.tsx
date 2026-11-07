@@ -49,15 +49,16 @@ export function GoogleSignInButton() {
       if (!res.ok) {
         setError(res.error);
         setErrorCode(res.code ?? "");
+        setBusy(false);
         return;
       }
-      // Popup success: onAuthStateChanged has already set the authenticated
-      // user (and created the account record on first sign-in). If we are on
-      // a page that disappears after sign-in (login or the booking gate),
-      // move to the dashboard. `hash`/`path` are captured from the render —
-      // no hooks are called inside this event handler.
+      if (res.redirected) {
+        // Full-page navigation to Google is in progress — keep the spinner.
+        return;
+      }
       if (path === "/login" || path === "/book") navigate("/dashboard");
-    } finally {
+      setBusy(false);
+    } catch {
       setBusy(false);
     }
   };
@@ -66,7 +67,7 @@ export function GoogleSignInButton() {
     <div className="flex flex-col items-center gap-3">
       <button type="button" onClick={() => void click()} disabled={busy} className={btnCls("secondary", "lg", "w-full")}>
         {busy ? <Spinner /> : <GoogleG />}
-        {busy ? "Connecting to Google…" : "Continue with Google"}
+        {busy ? "Redirecting to Google…" : "Continue with Google"}
       </button>
       {error && (
         <div role="alert" className="w-full rounded-xl border border-red-100 bg-red-50 px-4 py-3 anim-fade text-left">

@@ -87,11 +87,24 @@ export function authErrorCode(e: unknown): string | undefined {
     // Firebase sometimes returns dotted sentences as the code, e.g.
     // "auth/api-key-not-valid.-please-pass-a-valid-api-key"
     if (code.startsWith("auth/api-key-not-valid")) return "auth/invalid-api-key";
+    if (code === "auth/popup-closed-by-user") return "auth/popup-closed-before-sign-in";
     return code;
   }
   const message = e instanceof Error ? e.message : String(e ?? "");
   if (/api key not valid/i.test(message)) return "auth/invalid-api-key";
   return undefined;
+}
+
+/** Popup failures that should silently fall back to the full-page redirect flow. */
+export function isRecoverablePopupError(e: unknown): boolean {
+  const code = authErrorCode(e) ?? "";
+  return (
+    code === "auth/popup-closed-before-sign-in" ||
+    code === "auth/popup-closed-by-user" ||
+    code === "auth/cancelled-popup-request" ||
+    code === "auth/popup-blocked" ||
+    code === "auth/operation-not-supported-in-this-environment"
+  );
 }
 
 export function isInternalAuthError(e: unknown): boolean {
