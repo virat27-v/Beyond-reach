@@ -105,17 +105,18 @@ function Router() {
     window.scrollTo(0, 0);
   }, [hash]);
 
-  // After Google sign-in (popup or redirect), always land on the dashboard —
-  // never on a 404 / Firebase handler URL.
+  // Signed-in users always land on the dashboard — never the public homepage
+  // they saw before login, and never a 404 / Firebase handler URL.
   useEffect(() => {
     if (!ready || !user) return;
     const { query } = parseRoute(hash);
     const next = query.get("next") || sessionStorage.getItem(NEXT_PATH_KEY) || "/dashboard";
     const known = !!TITLES[path] || !!DASH_VIEWS[path];
-    if (path === "/login" || isAuthReturnPath(path) || !known) {
+    const sendToDashboard = path === "/" || path === "/login" || isAuthReturnPath(path) || !known;
+    if (sendToDashboard) {
       sessionStorage.removeItem(NEXT_PATH_KEY);
       sessionStorage.removeItem(PENDING_REDIRECT_KEY);
-      if (path !== next) navigate(next);
+      if (path !== "/dashboard") navigate(next.startsWith("/dashboard") ? next : "/dashboard");
     }
   }, [user, ready, path, hash]);
 
@@ -127,6 +128,7 @@ function Router() {
 
   switch (path) {
     case "/":
+      if (ready && user) return <LoadingScreen />;
       return pub(<Home />);
     case "/pricing":
       return pub(<PricingPage />);

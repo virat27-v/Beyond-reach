@@ -95,7 +95,7 @@ export function Nav() {
         }`}
       >
         <div className="mx-auto flex h-[68px] max-w-7xl items-center justify-between px-5 md:px-8">
-          <button onClick={() => go("/")} className="cursor-pointer" aria-label="Beyond Reach — home">
+          <button onClick={() => go(user ? "/dashboard" : "/")} className="cursor-pointer" aria-label="Beyond Reach — home">
             <Logo />
           </button>
 
