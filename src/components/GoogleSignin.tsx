@@ -64,7 +64,7 @@ export function GoogleSignInButton() {
 
   return (
     <div className="flex flex-col items-center gap-3">
-      <button type="button" onClick={() => void click()} disabled={busy} className={btnCls("secondary", "lg", "min-h-12 w-full")}>
+      <button type="button" onClick={() => void click()} disabled={busy} className={btnCls("secondary", "lg", "w-full")}>
         {busy ? <Spinner /> : <GoogleG />}
         {busy ? "Connecting to Google…" : "Continue with Google"}
       </button>

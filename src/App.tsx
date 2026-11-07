@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { AppProvider, useStore } from "./lib/store";
+import { AppProvider, NEXT_PATH_KEY, PENDING_REDIRECT_KEY, useStore } from "./lib/store";
 import { navigate, parseRoute, useHashRoute } from "./lib/router";
 import { PublicShell, Toasts } from "./components/chrome";
 import { Logo, Spinner, btnCls } from "./components/ui";
@@ -41,11 +41,16 @@ const DASH_VIEWS: Record<string, DashView> = {
   "/dashboard/account": "account",
 };
 
+function isAuthReturnPath(path: string) {
+  return path.startsWith("/__/") || path.includes("auth/handler");
+}
+
 function LoadingScreen() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-5 bg-white">
       <Logo />
       <Spinner size={22} className="text-faint" />
+      <p className="text-sm text-sub">Signing you in…</p>
     </div>
   );
 }
@@ -72,8 +77,8 @@ function NotFound() {
           <button onClick={() => navigate("/")} className={btnCls("primary", "lg")}>
             Back to Home
           </button>
-          <button onClick={() => navigate("/book")} className={btnCls("secondary", "lg")}>
-            Start Advertising — ₹399
+          <button onClick={() => navigate("/login")} className={btnCls("secondary", "lg")}>
+            Sign in with Google
           </button>
         </div>
       </div>
@@ -100,19 +105,25 @@ function Router() {
     window.scrollTo(0, 0);
   }, [hash]);
 
-  // After a successful Google sign-in, route the user where they wanted to go.
+  // After Google sign-in (popup or redirect), always land on the dashboard —
+  // never on a 404 / Firebase handler URL.
   useEffect(() => {
-    if (user && path === "/login") {
-      const { query } = parseRoute(hash);
-      navigate(query.get("next") || "/dashboard");
+    if (!ready || !user) return;
+    const { query } = parseRoute(hash);
+    const next = query.get("next") || sessionStorage.getItem(NEXT_PATH_KEY) || "/dashboard";
+    const known = !!TITLES[path] || !!DASH_VIEWS[path];
+    if (path === "/login" || isAuthReturnPath(path) || !known) {
+      sessionStorage.removeItem(NEXT_PATH_KEY);
+      sessionStorage.removeItem(PENDING_REDIRECT_KEY);
+      if (path !== next) navigate(next);
     }
-  }, [user, path, hash]);
+  }, [user, ready, path, hash]);
 
-  const pub = (el: React.ReactNode) => (
-    <PublicShell>
-      {el}
-    </PublicShell>
-  );
+  const pub = (el: React.ReactNode) => <PublicShell>{el}</PublicShell>;
+
+  if (isAuthReturnPath(path) || (typeof sessionStorage !== "undefined" && sessionStorage.getItem(PENDING_REDIRECT_KEY) && !TITLES[path] && !DASH_VIEWS[path])) {
+    return <LoadingScreen />;
+  }
 
   switch (path) {
     case "/":
@@ -132,9 +143,6 @@ function Router() {
     case "/book":
       return <BookingPage />;
     case "/login":
-      // Always show the Google sign-in page unless the user is already signed in.
-      // Never hide it behind an infinite spinner (that is what made Vercel look
-      // like sign-in had "disappeared").
       if (ready && user) return <LoadingScreen />;
       return <LoginPage />;
     default: {
@@ -143,10 +151,10 @@ function Router() {
         return (
           <RequireAuth next={path}>
             <DashboardPage view={view} />
-            <Toasts />
           </RequireAuth>
         );
       }
+      if (user) return <LoadingScreen />;
       return <NotFound />;
     }
   }
@@ -156,6 +164,7 @@ export default function App() {
   return (
     <AppProvider>
       <Router />
+      <Toasts />
     </AppProvider>
   );
 }

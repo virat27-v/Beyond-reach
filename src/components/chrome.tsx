@@ -176,24 +176,13 @@ export function Nav() {
             )}
           </div>
 
-          <div className="flex items-center gap-2 lg:hidden">
-            {user ? (
-              <button onClick={() => go("/dashboard")} className={btnCls("secondary", "sm")}>
-                Dashboard
-              </button>
-            ) : (
-              <button onClick={() => go("/login")} className={btnCls("primary", "sm")}>
-                Sign in
-              </button>
-            )}
-            <button
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-line cursor-pointer"
-              onClick={() => setMobileOpen(true)}
-              aria-label="Open menu"
-            >
-              <Menu size={18} />
-            </button>
-          </div>
+          <button
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-line lg:hidden cursor-pointer"
+            onClick={() => setMobileOpen(true)}
+            aria-label="Open menu"
+          >
+            <Menu size={18} />
+          </button>
         </div>
       </header>
 
@@ -257,11 +246,11 @@ export function Nav() {
               </div>
             ) : (
               <div className="flex flex-col gap-2.5">
-                <button onClick={() => go("/login")} className={btnCls("primary", "lg", "w-full")}>
-                  Sign in with Google
-                </button>
-                <button onClick={() => go("/book")} className={btnCls("secondary", "lg", "w-full")}>
+                <button onClick={() => go("/book")} className={btnCls("primary", "lg", "w-full")}>
                   Get Started — ₹399
+                </button>
+                <button onClick={() => go("/login")} className={btnCls("secondary", "lg", "w-full")}>
+                  Sign in with Google
                 </button>
               </div>
             )}

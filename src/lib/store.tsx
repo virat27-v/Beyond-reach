@@ -9,15 +9,12 @@ import {
   browserPopupRedirectResolver,
   friendlyFirebaseError,
   googleProvider,
-  isLikelyMobile,
 } from "./firebase";
 
 /* ------------------------------------------------------------------ */
 /*  Frontend-only store backed by Firebase Authentication.             */
-/*  - onAuthStateChanged → persistent, refresh-proof auth state        */
-/*  - signInWithPopup (desktop) / signInWithRedirect (mobile)          */
-/*  - real Google identity only: name, email, photo from Google        */
-/*  - no database, no custom backend, no simulated users               */
+/*  Popup-first on every device so mobile never lands on a 404.        */
+/*  Redirect is only a last-resort fallback if the popup is blocked.   */
 /* ------------------------------------------------------------------ */
 
 export interface Toast {
@@ -31,10 +28,10 @@ type Result = { ok: true } | { ok: false; error: string; code?: string };
 
 interface Store {
   firebaseConfigured: boolean;
-  authReady: boolean; // Firebase actually initialized in this browser
-  ready: boolean; // Firebase auth state resolved
+  authReady: boolean;
+  ready: boolean;
   user: User | null;
-  data: UserData; // always empty in this build — nothing is stored on a server
+  data: UserData;
   unread: number;
   toasts: Toast[];
   toast: (title: string, body?: string, tone?: Toast["tone"]) => void;
@@ -60,12 +57,6 @@ interface FirebaseUserLike {
   metadata?: { creationTime?: string };
 }
 
-/**
- * The "user account" is the Firebase Authentication record — created automatically
- * by Google/Firebase on first sign-in (uid = unique internal id, creationTime =
- * registration timestamp). One Google identity = one account, ever; re-signing-in
- * always resolves to the same uid, so no duplicates can exist.
- */
 function toAppUser(fb: FirebaseUserLike): User {
   const created = Date.parse(fb.metadata?.creationTime ?? "");
   const now = Date.now();
@@ -82,8 +73,8 @@ function toAppUser(fb: FirebaseUserLike): User {
   };
 }
 
-const PENDING_REDIRECT_KEY = "br:pendingGoogle";
-const NEXT_PATH_KEY = "br:next";
+export const PENDING_REDIRECT_KEY = "br:pendingGoogle";
+export const NEXT_PATH_KEY = "br:next";
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -97,33 +88,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
   const dismissToast = useCallback((id: string) => setToasts((t) => t.filter((x) => x.id !== id)), []);
 
-  /* Persistent auth state: restored automatically after refresh
-     (Firebase keeps the session in IndexedDB and re-asserts it here). */
   useEffect(() => {
     if (!auth) {
       setReady(true);
       return;
     }
     const failSafe = window.setTimeout(() => setReady(true), 2500);
-    // Completes the mobile/full-page redirect flow when the user returns from Google.
-    getRedirectResult(auth).catch((e) => {
-      console.warn("[BR-AUTH] Redirect result error:", e);
-    });
-    const unsub = onAuthStateChanged(auth, (fbUser) => {
-      if (fbUser) {
-        const u = toAppUser(fbUser);
-        setUser(u);
-        // Completion of the mobile redirect flow: surface account feedback once.
-        if (sessionStorage.getItem(PENDING_REDIRECT_KEY)) {
+
+    getRedirectResult(auth)
+      .then((cred) => {
+        if (cred?.user) {
+          const u = toAppUser(cred.user);
+          setUser(u);
           sessionStorage.removeItem(PENDING_REDIRECT_KEY);
-          sessionStorage.removeItem(NEXT_PATH_KEY);
           toast(
             u.isFirstLogin ? "Account created" : "Welcome back",
             u.isFirstLogin ? `Your Beyond Reach account was created with ${u.email}.` : `Signed in as ${u.name}.`
           );
         }
+      })
+      .catch((e) => {
+        console.warn("[BR-AUTH] Redirect result error:", e);
+      });
+
+    const unsub = onAuthStateChanged(auth, (fbUser) => {
+      if (fbUser) {
+        setUser(toAppUser(fbUser));
       } else {
-        sessionStorage.removeItem(PENDING_REDIRECT_KEY);
         setUser(null);
       }
       setReady(true);
@@ -136,7 +127,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const googleLogin = useCallback(
     async (next: string): Promise<Result> => {
-      const fbAuth = auth; // capture once so closures see a non-null value
+      const fbAuth = auth;
       if (!fbAuth) {
         return {
           ok: false,
@@ -145,46 +136,39 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         };
       }
       const target = next || "/dashboard";
-      // Full-page redirect flow (mobile-first). Also used as the automatic
-      // desktop fallback when a popup is blocked or unsupported.
-      const doRedirect = async () => {
-        sessionStorage.setItem(PENDING_REDIRECT_KEY, "1");
-        sessionStorage.setItem(NEXT_PATH_KEY, target);
-        await signInWithRedirect(fbAuth, googleProvider(), browserPopupRedirectResolver);
+      sessionStorage.setItem(NEXT_PATH_KEY, target);
+
+      const finish = (fbUser: FirebaseUserLike) => {
+        const u = toAppUser(fbUser);
+        toast(
+          u.isFirstLogin ? "Account created" : "Welcome back",
+          u.isFirstLogin ? `Your Beyond Reach account was created with ${u.email}.` : `Signed in as ${u.name}.`
+        );
       };
+
       try {
-        if (isLikelyMobile()) {
-          // Mobile browsers: popups are blocked or unreliable → redirect flow.
-          await doRedirect();
-          return { ok: true };
+        // Popup-first on every device. Redirect leaves the page and often
+        // returns to /__/auth/handler which this SPA used to 404.
+        const cred = await signInWithPopup(fbAuth, googleProvider(), browserPopupRedirectResolver);
+        if (cred.user) finish(cred.user);
+        sessionStorage.removeItem(PENDING_REDIRECT_KEY);
+        return { ok: true };
+      } catch (popupErr) {
+        const code = authErrorCode(popupErr) ?? "";
+        if (code === "auth/popup-closed-before-sign-in" || code === "auth/cancelled-popup-request") {
+          return { ok: false, error: friendlyFirebaseError(popupErr), code };
         }
-        // Desktop: native Google account-chooser popup.
-        // Firebase automatically creates the account record on first sign-in
-        // and returns the same record on every later sign-in (no duplicates).
-        try {
-          const cred = await signInWithPopup(fbAuth, googleProvider(), browserPopupRedirectResolver);
-          if (cred.user) {
-            const u = toAppUser(cred.user);
-            toast(
-              u.isFirstLogin ? "Account created" : "Welcome back",
-              u.isFirstLogin ? `Your Beyond Reach account was created with ${u.email}.` : `Signed in as ${u.name}.`
-            );
-          }
-          return { ok: true };
-        } catch (popupErr) {
-          const code = (popupErr as { code?: string })?.code ?? "";
-          if (code === "auth/popup-blocked" || code === "auth/operation-not-supported-in-this-environment") {
-            // Some browsers/environments (kiosks, in-app browsers, strict
-            // settings) cannot host the popup — fall back to the redirect
-            // flow automatically instead of surfacing an error.
-            console.warn("[BR-AUTH] Popup unavailable in this environment — using redirect flow.", popupErr);
-            await doRedirect();
+        if (code === "auth/popup-blocked" || code === "auth/operation-not-supported-in-this-environment") {
+          try {
+            sessionStorage.setItem(PENDING_REDIRECT_KEY, "1");
+            await signInWithRedirect(fbAuth, googleProvider(), browserPopupRedirectResolver);
             return { ok: true };
+          } catch (redirectErr) {
+            sessionStorage.removeItem(PENDING_REDIRECT_KEY);
+            return { ok: false, error: friendlyFirebaseError(redirectErr), code: authErrorCode(redirectErr) };
           }
-          throw popupErr;
         }
-      } catch (e) {
-        return { ok: false, error: friendlyFirebaseError(e), code: authErrorCode(e) };
+        return { ok: false, error: friendlyFirebaseError(popupErr), code };
       }
     },
     [toast]
