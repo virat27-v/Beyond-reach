@@ -205,8 +205,8 @@ function Hero() {
                 Start Advertising — ₹399
                 <ArrowRight size={17} />
               </button>
-              <button onClick={() => navigate("/", "how-it-works")} className={btnCls("secondary", "lg")}>
-                Explore How It Works
+              <button onClick={() => navigate("/login")} className={btnCls("secondary", "lg")}>
+                Sign in with Google
               </button>
             </div>
           </Reveal>

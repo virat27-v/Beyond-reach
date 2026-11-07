@@ -104,6 +104,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setReady(true);
       return;
     }
+    const failSafe = window.setTimeout(() => setReady(true), 2500);
     // Completes the mobile/full-page redirect flow when the user returns from Google.
     getRedirectResult(auth).catch((e) => {
       console.warn("[BR-AUTH] Redirect result error:", e);
@@ -127,7 +128,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
       setReady(true);
     });
-    return unsub;
+    return () => {
+      window.clearTimeout(failSafe);
+      unsub();
+    };
   }, [toast]);
 
   const googleLogin = useCallback(

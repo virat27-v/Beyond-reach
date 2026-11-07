@@ -132,7 +132,11 @@ function Router() {
     case "/book":
       return <BookingPage />;
     case "/login":
-      return !ready || user ? <LoadingScreen /> : <LoginPage />;
+      // Always show the Google sign-in page unless the user is already signed in.
+      // Never hide it behind an infinite spinner (that is what made Vercel look
+      // like sign-in had "disappeared").
+      if (ready && user) return <LoadingScreen />;
+      return <LoginPage />;
     default: {
       const view = DASH_VIEWS[path];
       if (view) {

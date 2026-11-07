@@ -167,7 +167,7 @@ export function Nav() {
             ) : (
               <>
                 <button onClick={() => go("/login")} className={btnCls("ghost", "sm")}>
-                  Log in
+                  Sign in with Google
                 </button>
                 <button onClick={() => go("/book")} className={btnCls("primary", "sm")}>
                   Get Started
@@ -250,7 +250,7 @@ export function Nav() {
                   Get Started — ₹399
                 </button>
                 <button onClick={() => go("/login")} className={btnCls("secondary", "lg", "w-full")}>
-                  Log in
+                  Sign in with Google
                 </button>
               </div>
             )}
