@@ -104,9 +104,7 @@ function Router() {
   useEffect(() => {
     if (user && path === "/login") {
       const { query } = parseRoute(hash);
-      const stored = sessionStorage.getItem("br:next");
-      sessionStorage.removeItem("br:next");
-      navigate(query.get("next") || stored || "/dashboard");
+      navigate(query.get("next") || "/dashboard");
     }
   }, [user, path, hash]);
 
